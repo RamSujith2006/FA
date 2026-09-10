@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.db
+*.sqlite3
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Uploaded content (keep directory structure with .gitkeep)
+static/uploads/photos/*
+!static/uploads/photos/.gitkeep
+static/uploads/videos/*
+!static/uploads/videos/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

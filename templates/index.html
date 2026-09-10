@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FA Events — Wedding & Event Decoration in Nagercoil, Kanyakumari District</title>
+<meta name="description" content="FA Events is a professional event decoration company based in Parvathipuram, Nagercoil, offering wedding, birthday, engagement, reception and stage decoration across Kanyakumari (KK) District. View our gallery and send an enquiry on WhatsApp.">
+<meta name="keywords" content="event decoration Nagercoil, wedding decoration Nagercoil, decoration Kanyakumari, birthday decoration Nagercoil, event decorators KK District, stage decoration Nagercoil, event decoration Parvathipuram, wedding decorators near me">
+<link rel="canonical" href="{{ request.url_root }}">
+
+<!-- Open Graph -->
+<meta property="og:type" content="business.business">
+<meta property="og:title" content="FA Events — Wedding & Event Decoration in Nagercoil, Kanyakumari District">
+<meta property="og:description" content="Weddings, birthdays, engagements, receptions and stage decoration across Parvathipuram, Nagercoil and Kanyakumari District.">
+<meta property="og:url" content="{{ request.url_root }}">
+<meta property="og:locale" content="en_IN">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+<!-- Local business structured data for Google -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "EventPlanner",
+  "name": "{{ biz.name }}",
+  "description": "Wedding and event decoration services across Parvathipuram, Nagercoil and Kanyakumari District.",
+  "url": "{{ request.url_root }}",
+  "telephone": "{{ biz.phone_tel }}",
+  "email": "{{ biz.email }}",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "{{ biz.address_line }}",
+    "addressRegion": "Tamil Nadu",
+    "addressCountry": "IN"
+  },
+  "areaServed": "{{ biz.areas_served }}",
+  "sameAs": ["{{ biz.instagram_link }}"]
+  {% if total_ratings and total_ratings > 0 %}
+  ,"aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "{{ avg_stars }}",
+    "reviewCount": "{{ total_ratings }}"
+  }
+  {% endif %}
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a href="#top" class="brand">
+      <span class="brand-mark">FA Events</span>
+      <span class="brand-sub">Nagercoil &middot; Kanyakumari</span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="#about">About</a></li>
+        <li><a href="#services">Services</a></li>
+        <li><a href="#gallery">Gallery</a></li>
+        <li><a href="#videos">Videos</a></li>
+        <li><a href="#reviews">Reviews</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="nav-cta">
+      <a href="{{ biz.phone_tel and 'tel:' + biz.phone_tel }}" class="btn btn-outline">Call Us</a>
+      <button class="nav-toggle" aria-label="Toggle menu"><span></span></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <p class="hero-eyebrow">Wedding &amp; Event Decoration &middot; Parvathipuram &middot; Nagercoil &middot; Kanyakumari District</p>
+        <h1>Decoration that makes your celebration unforgettable</h1>
+        <p class="lead">FA Events designs and builds wedding, engagement, birthday and stage decorations across Kanyakumari District — from intimate baby showers to full wedding-hall transformations.</p>
+        <div class="hero-actions">
+          <a href="#contact" class="btn btn-primary">Send an Enquiry</a>
+          <a href="https://wa.me/{{ biz.whatsapp_number }}" target="_blank" rel="noopener" class="btn btn-whatsapp">Chat on WhatsApp</a>
+        </div>
+        <div class="hero-stats">
+          <div><strong>{{ "%.1f"|format(avg_stars) if avg_stars else "New" }}</strong><span>{{ total_ratings }} customer review{{ 's' if total_ratings != 1 else '' }}</span></div>
+          <div><strong>{{ photos|length }}+</strong><span>Decorations in gallery</span></div>
+          <div><strong>KK District</strong><span>Areas we serve</span></div>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="200" cy="200" r="170" stroke="#c8973f" stroke-width="1" stroke-dasharray="2 6"/>
+          <circle cx="200" cy="200" r="130" stroke="#6c1f2c" stroke-width="1"/>
+          <g stroke="#c8973f" stroke-width="2" fill="none">
+            <path d="M200 90 C220 120 220 150 200 170 C180 150 180 120 200 90 Z"/>
+            <path d="M310 200 C280 220 250 220 230 200 C250 180 280 180 310 200 Z"/>
+            <path d="M200 310 C180 280 180 250 200 230 C220 250 220 280 200 310 Z"/>
+            <path d="M90 200 C120 180 150 180 170 200 C150 220 120 220 90 200 Z"/>
+          </g>
+          <g stroke="#6c1f2c" stroke-width="1.5" fill="none">
+            <path d="M270 130 C285 150 285 170 270 185 C255 170 255 150 270 130 Z"/>
+            <path d="M270 270 C255 250 255 230 270 215 C285 230 285 250 270 270 Z"/>
+            <path d="M130 270 C115 250 115 230 130 215 C145 230 145 250 130 270 Z"/>
+            <path d="M130 130 C145 150 145 170 130 185 C115 170 115 150 130 130 Z"/>
+          </g>
+          <circle cx="200" cy="200" r="46" fill="#faf4e8" stroke="#6c1f2c" stroke-width="1.5"/>
+          <text x="200" y="210" text-anchor="middle" font-family="Marcellus, serif" font-size="30" fill="#6c1f2c">FA</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ABOUT ================= -->
+  <section class="section" id="about">
+    <div class="wrap about-grid">
+      <div>
+        <p class="section-kicker">About FA Events</p>
+        <h2>Rooted in Kanyakumari District, styled for every celebration</h2>
+        <p>Based in Parvathipuram near Nagercoil, FA Events has decorated weddings, receptions, engagements and birthdays across Kanyakumari District. We work closely with each family to design decorations that match the venue, the budget and the occasion — from a small home function to a full wedding hall.</p>
+        <p>Every project is planned on-site, built by our own decoration team, and finished on time so you can focus on the celebration, not the setup.</p>
+      </div>
+      <ul class="about-list">
+        <li>Free on-site consultation before every wedding and event booking</li>
+        <li>Custom flower, balloon, cloth and stage decoration design</li>
+        <li>Serving Parvathipuram, Nagercoil, Colachel, Marthandam, Thuckalay and across Kanyakumari District</li>
+        <li>Direct WhatsApp support for quotes, dates and design references</li>
+        <li>Photo and video gallery updated after every event</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= SERVICES ================= -->
+  <section class="section section-alt" id="services">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">What We Decorate</p>
+          <h2>Decoration services across Kanyakumari District</h2>
+        </div>
+        <p style="margin:0;">Don't see your event listed? <a href="#contact" style="color:var(--maroon); border-bottom:1px solid var(--maroon);">Ask us — we design custom setups too.</a></p>
+      </div>
+
+      <div class="service-list">
+        {% set services = [
+          ("01", "Wedding Decoration", "Stage, mandap, entrance and hall decoration for the full wedding day.", "Most booked"),
+          ("02", "Reception Decoration", "Elegant backdrop and stage styling for reception evenings.", ""),
+          ("03", "Engagement Decoration", "Ring-exchange stage, floral arches and seating decor.", ""),
+          ("04", "Birthday Decoration", "Themed balloon and backdrop setups for kids and adult birthdays.", ""),
+          ("05", "Baby Shower / Valaikaapu", "Traditional and modern baby shower decoration.", ""),
+          ("06", "Stage Decoration", "Custom stage design for functions, ceremonies and church events.", ""),
+          ("07", "Flower Decoration", "Fresh and artificial flower work for mandaps, cars and entrances.", ""),
+          ("08", "Balloon Decoration", "Balloon arches, backdrops and installations for any occasion.", ""),
+        ] %}
+        {% for num, title, desc, tag in services %}
+        <div class="service-row">
+          <span class="num">{{ num }}</span>
+          <div>
+            <h3>{{ title }}</h3>
+            <p>{{ desc }}</p>
+          </div>
+          {% if tag %}<span class="tag">{{ tag }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GALLERY ================= -->
+  <section class="section" id="gallery">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Photo Gallery</p>
+          <h2>Recent decoration work</h2>
+        </div>
+      </div>
+
+      {% if photos %}
+      <div class="gallery-tabs">
+        <button class="active" data-filter="all">All</button>
+        {% set cats = photos|map(attribute='category')|select|unique|list %}
+        {% for c in cats %}<button data-filter="{{ c }}">{{ c }}</button>{% endfor %}
+      </div>
+      <div class="photo-grid">
+        {% for p in photos %}
+        <figure data-category="{{ p.category or 'General' }}">
+          <img src="{{ url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or 'FA Events decoration' }}" loading="lazy">
+          {% if p.caption %}<figcaption>{{ p.caption }}</figcaption>{% endif %}
+        </figure>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-note">Our latest decoration photos will appear here shortly. Meanwhile, message us on WhatsApp for our full portfolio.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ================= VIDEOS ================= -->
+  <section class="section section-alt" id="videos">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Video Gallery</p>
+          <h2>See the decoration come together</h2>
+        </div>
+      </div>
+
+      {% if videos %}
+      <div class="video-grid">
+        {% for v in videos %}
+        <div class="video-card">
+          <div class="video-frame">
+            {% if v.filename %}
+              <video controls preload="metadata" src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"></video>
+            {% elif v.embed_url %}
+              <iframe src="{{ v.embed_url }}" loading="lazy" allowfullscreen title="{{ v.caption or 'FA Events video' }}"></iframe>
+            {% endif %}
+          </div>
+          {% if v.caption %}<figcaption>{{ v.caption }}</figcaption>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-note">Event highlight videos will be added here soon.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ================= REVIEWS ================= -->
+  <section class="section" id="reviews">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Customer Reviews</p>
+          <h2>What our customers say</h2>
+        </div>
+      </div>
+
+      <div class="rating-summary">
+        <span class="score">{{ "%.1f"|format(avg_stars) if avg_stars else "—" }}</span>
+        <div>
+          <span class="stars">{{ "★"*(avg_stars|round(0,'floor')|int) }}{{ "☆"*(5-(avg_stars|round(0,'floor')|int)) }}</span>
+          <p class="meta" style="margin:0;">Based on {{ total_ratings }} review{{ 's' if total_ratings != 1 else '' }}</p>
+        </div>
+      </div>
+
+      {% if ratings %}
+      <div class="review-grid">
+        {% for r in ratings %}
+        <div class="review-card">
+          <span class="stars">{{ "★"*r.stars }}{{ "☆"*(5-r.stars) }}</span>
+          {% if r.comment %}<p>"{{ r.comment }}"</p>{% endif %}
+          <span class="who">{{ r.name }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-note" style="margin-bottom:36px;">Be the first to share how your event decoration turned out.</p>
+      {% endif %}
+
+      <form id="rating-form" class="rate-form" action="{{ url_for('submit_rating') }}" method="post">
+        <h3>Leave a rating</h3>
+        <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
+        <div class="field">
+          <label for="rate-name">Your name</label>
+          <input type="text" id="rate-name" name="name" required>
+        </div>
+        <label style="display:block; font-size:0.82rem; color:var(--ink-soft); margin-bottom:4px;">Your rating</label>
+        <div class="star-input" role="radiogroup" aria-label="Star rating">
+          <button type="button" data-star="1" aria-label="1 star">★</button>
+          <button type="button" data-star="2" aria-label="2 stars">★</button>
+          <button type="button" data-star="3" aria-label="3 stars">★</button>
+          <button type="button" data-star="4" aria-label="4 stars">★</button>
+          <button type="button" data-star="5" aria-label="5 stars">★</button>
+        </div>
+        <input type="hidden" id="stars-value" name="stars" value="">
+        <div class="field">
+          <label for="rate-comment">Your review (optional)</label>
+          <textarea id="rate-comment" name="comment" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Submit Rating</button>
+        <p id="rating-msg" class="form-msg" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ================= CONTACT ================= -->
+  <section class="section section-dark" id="contact">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Contact FA Events</p>
+          <h2>Tell us about your event</h2>
+        </div>
+      </div>
+
+      <div class="contact-grid">
+        <div class="contact-card">
+          <h3>Reach us directly</h3>
+          <p>We usually reply within a few hours. For urgent bookings, WhatsApp or call us.</p>
+          <div class="contact-line"><span class="ic">📍</span><span>{{ biz.address_line }}</span></div>
+          <div class="contact-line"><span class="ic">📞</span><a href="tel:{{ biz.phone_tel }}">{{ biz.phone_display }}</a></div>
+          <div class="contact-line"><span class="ic">✉️</span><a href="mailto:{{ biz.email }}">{{ biz.email }}</a></div>
+          <div class="contact-line"><span class="ic">🗺️</span><span>Serving {{ biz.areas_served }}</span></div>
+          <div class="contact-social">
+            <a href="https://wa.me/{{ biz.whatsapp_number }}" target="_blank" rel="noopener" class="btn btn-whatsapp">WhatsApp Us</a>
+            <a href="{{ biz.whatsapp_group_link }}" target="_blank" rel="noopener" class="btn btn-gold">Join WhatsApp Group</a>
+            <a href="{{ biz.instagram_link }}" target="_blank" rel="noopener" class="btn btn-outline" style="border-color:#fff; color:#fff;">Follow on Instagram</a>
+          </div>
+          <div class="map-frame">
+            <iframe src="{{ biz.map_embed_src }}" loading="lazy" title="FA Events location map"></iframe>
+          </div>
+        </div>
+
+        <form id="enquiry-form" class="enquiry-form" action="{{ url_for('submit_enquiry') }}" method="post">
+          <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
+          <div class="form-row">
+            <div class="field">
+              <label for="e-name">Full name *</label>
+              <input type="text" id="e-name" name="name" required>
+            </div>
+            <div class="field">
+              <label for="e-phone">Phone number *</label>
+              <input type="tel" id="e-phone" name="phone" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="e-email">Email</label>
+              <input type="email" id="e-email" name="email">
+            </div>
+            <div class="field">
+              <label for="e-type">Event type</label>
+              <select id="e-type" name="event_type">
+                <option value="">Select event</option>
+                <option>Wedding</option>
+                <option>Reception</option>
+                <option>Engagement</option>
+                <option>Birthday</option>
+                <option>Baby Shower</option>
+                <option>Stage Decoration</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="e-date">Event date</label>
+              <input type="date" id="e-date" name="event_date">
+            </div>
+            <div class="field">
+              <label for="e-location">Event location</label>
+              <input type="text" id="e-location" name="location" placeholder="e.g. Nagercoil">
+            </div>
+          </div>
+          <div class="field">
+            <label for="e-message">Tell us about your event</label>
+            <textarea id="e-message" name="message" rows="4"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Send Enquiry</button>
+          <p id="enquiry-msg" class="form-msg" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <h4>FA Events</h4>
+        <p>Wedding and event decoration across Parvathipuram, Nagercoil and Kanyakumari District — weddings, birthdays, engagements, receptions and stage decoration.</p>
+      </div>
+      <div>
+        <h4>Quick Links</h4>
+        <ul>
+          <li><a href="#services">Services</a></li>
+          <li><a href="#gallery">Gallery</a></li>
+          <li><a href="#reviews">Reviews</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><a href="{{ url_for('admin_login') }}">Admin Login</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Get in Touch</h4>
+        <p>{{ biz.address_line }}</p>
+        <p><a href="tel:{{ biz.phone_tel }}">{{ biz.phone_display }}</a></p>
+        <p><a href="{{ biz.instagram_link }}" target="_blank" rel="noopener">Instagram {{ biz.instagram_handle }}</a></p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>&copy; {{ 2026 }} FA Events, Nagercoil. All rights reserved.</span>
+      <span>Serving Parvathipuram &middot; Nagercoil &middot; Kanyakumari District</span>
+    </div>
+  </div>
+</footer>
+
+<a href="https://wa.me/{{ biz.whatsapp_number }}" target="_blank" rel="noopener" class="whatsapp-float" aria-label="Chat on WhatsApp">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12.004 2C6.484 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.07L2 22l5.06-1.33A9.94 9.94 0 0012.004 22C17.52 22 22 17.52 22 12S17.52 2 12.004 2zm0 18.2a8.17 8.17 0 01-4.17-1.14l-.3-.18-3.01.79.8-2.93-.19-.3A8.17 8.17 0 013.8 12c0-4.53 3.68-8.2 8.2-8.2 4.53 0 8.2 3.67 8.2 8.2 0 4.53-3.67 8.2-8.2 8.2z"/></svg>
+</a>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

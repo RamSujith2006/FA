@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — FA Events</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="admin-shell">
+  <div class="admin-topbar">
+    <div class="wrap">
+      <span class="brand-mark" style="color:#f2e9df;">FA Events Admin</span>
+      <a href="{{ url_for('admin_logout') }}" class="logout">Log Out</a>
+    </div>
+  </div>
+
+  <div class="admin-main">
+    <div class="wrap">
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          {% for m in messages %}<div class="flash success">{{ m }}</div>{% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="stat-cards">
+        <div class="stat-card"><strong>{{ unread_count }}</strong><span>New enquiries</span></div>
+        <div class="stat-card"><strong>{{ enquiries|length }}</strong><span>Total enquiries</span></div>
+        <div class="stat-card"><strong>{{ photos|length }}</strong><span>Photos in gallery</span></div>
+        <div class="stat-card"><strong>{{ videos|length }}</strong><span>Videos in gallery</span></div>
+        <div class="stat-card"><strong>{{ pending_ratings }}</strong><span>Reviews awaiting approval</span></div>
+      </div>
+
+      <div class="admin-tabs">
+        <a href="#enquiries">Enquiries <span class="count-pill">{{ unread_count }}</span></a>
+        <a href="#gallery">Photo Gallery</a>
+        <a href="#videos">Video Gallery</a>
+        <a href="#reviews">Reviews <span class="count-pill">{{ pending_ratings }}</span></a>
+        <a href="#settings">Settings</a>
+      </div>
+
+      <!-- ============== ENQUIRIES ============== -->
+      <section id="enquiries" class="admin-panel">
+        <h3>Customer Enquiries</h3>
+        {% if enquiries %}
+          {% for e in enquiries %}
+          <div class="enquiry-item {{ 'unread' if not e.is_read }}">
+            <div>
+              <h4>{{ e.name }} {% if not e.is_read %}<span class="count-pill">New</span>{% endif %}</h4>
+              <div class="meta">
+                {{ e.phone }}{% if e.email %} &middot; {{ e.email }}{% endif %}
+                {% if e.event_type %} &middot; {{ e.event_type }}{% endif %}
+                {% if e.event_date %} &middot; {{ e.event_date }}{% endif %}
+                {% if e.location %} &middot; {{ e.location }}{% endif %}
+                &middot; {{ e.created_at }}
+              </div>
+              {% if e.message %}<p class="msg">{{ e.message }}</p>{% endif %}
+            </div>
+            <div class="enquiry-actions">
+              {% if not e.is_read %}
+              <form method="post" action="{{ url_for('mark_enquiry_read', enquiry_id=e.id) }}">
+                <button class="mini-btn gold" type="submit">Mark read</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('delete_enquiry', enquiry_id=e.id) }}" onsubmit="return confirm('Delete this enquiry?');">
+                <button class="mini-btn danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="color:var(--ink-soft); font-size:0.92rem;">No enquiries yet. New enquiries from the website will appear here.</p>
+        {% endif %}
+      </section>
+
+      <!-- ============== PHOTO GALLERY ============== -->
+      <section id="gallery" class="admin-panel">
+        <h3>Photo Gallery</h3>
+        <form class="upload-form" action="{{ url_for('upload_photo') }}" method="post" enctype="multipart/form-data">
+          <div class="field">
+            <label for="photo-file">Photo file (JPG, PNG, WEBP, GIF)</label>
+            <input type="file" id="photo-file" name="photo" accept="image/*" required>
+          </div>
+          <div class="field">
+            <label for="photo-caption">Caption</label>
+            <input type="text" id="photo-caption" name="caption" placeholder="e.g. Wedding stage, Nagercoil">
+          </div>
+          <div class="field">
+            <label for="photo-category">Category</label>
+            <input type="text" id="photo-category" name="category" placeholder="e.g. Wedding, Birthday, Stage">
+          </div>
+          <button type="submit" class="btn btn-primary">Upload Photo</button>
+        </form>
+
+        <div class="admin-grid">
+          {% for p in photos %}
+          <div class="admin-thumb">
+            <img src="{{ url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or '' }}">
+            <div class="cap">{{ p.caption or p.category or 'Untitled' }}</div>
+            <form method="post" action="{{ url_for('delete_photo', photo_id=p.id) }}" onsubmit="return confirm('Delete this photo?');">
+              <button class="mini-btn danger" type="submit">Delete</button>
+            </form>
+          </div>
+          {% else %}
+          <p style="color:var(--ink-soft); font-size:0.92rem;">No photos uploaded yet.</p>
+          {% endfor %}
+        </div>
+      </section>
+
+      <!-- ============== VIDEO GALLERY ============== -->
+      <section id="videos" class="admin-panel">
+        <h3>Video Gallery</h3>
+        <form class="upload-form" action="{{ url_for('upload_video') }}" method="post" enctype="multipart/form-data">
+          <div class="field">
+            <label for="video-file">Upload a video file (MP4, WEBM, MOV) — optional</label>
+            <input type="file" id="video-file" name="video" accept="video/*">
+          </div>
+          <div class="field">
+            <label for="video-embed">Or paste a YouTube / Instagram embed link</label>
+            <input type="url" id="video-embed" name="embed_url" placeholder="https://www.youtube.com/embed/...">
+          </div>
+          <div class="field">
+            <label for="video-caption">Caption</label>
+            <input type="text" id="video-caption" name="caption" placeholder="e.g. Reception highlight, Colachel">
+          </div>
+          <div class="field">
+            <label for="video-category">Category</label>
+            <input type="text" id="video-category" name="category" placeholder="e.g. Wedding, Birthday">
+          </div>
+          <button type="submit" class="btn btn-primary">Add Video</button>
+        </form>
+
+        <div class="admin-grid">
+          {% for v in videos %}
+          <div class="admin-thumb">
+            {% if v.filename %}
+              <video src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}" muted></video>
+            {% else %}
+              <div style="height:130px; display:flex; align-items:center; justify-content:center; background:#eee; font-size:0.78rem; color:var(--ink-soft); text-align:center; padding:6px;">Embedded link</div>
+            {% endif %}
+            <div class="cap">{{ v.caption or v.category or 'Untitled' }}</div>
+            <form method="post" action="{{ url_for('delete_video', video_id=v.id) }}" onsubmit="return confirm('Delete this video?');">
+              <button class="mini-btn danger" type="submit">Delete</button>
+            </form>
+          </div>
+          {% else %}
+          <p style="color:var(--ink-soft); font-size:0.92rem;">No videos added yet.</p>
+          {% endfor %}
+        </div>
+      </section>
+
+      <!-- ============== REVIEWS ============== -->
+      <section id="reviews" class="admin-panel">
+        <h3>Customer Reviews</h3>
+        {% if ratings %}
+          {% for r in ratings %}
+          <div class="review-row">
+            <div>
+              <span class="stars">{{ "★"*r.stars }}{{ "☆"*(5-r.stars) }}</span>
+              {% if r.comment %}<p style="margin:0 0 4px; font-size:0.9rem;">"{{ r.comment }}"</p>{% endif %}
+              <span style="font-size:0.82rem; color:var(--ink-soft);">{{ r.name }} &middot; {{ r.created_at }} &middot; {{ 'Published' if r.approved else 'Pending approval' }}</span>
+            </div>
+            <div class="enquiry-actions">
+              {% if not r.approved %}
+              <form method="post" action="{{ url_for('approve_rating', rating_id=r.id) }}">
+                <button class="mini-btn gold" type="submit">Approve</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('delete_rating', rating_id=r.id) }}" onsubmit="return confirm('Delete this review?');">
+                <button class="mini-btn danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="color:var(--ink-soft); font-size:0.92rem;">No reviews yet.</p>
+        {% endif %}
+      </section>
+
+      <!-- ============== SETTINGS ============== -->
+      <section id="settings" class="admin-panel">
+        <h3>Change Admin Password</h3>
+        <form class="upload-form" method="post" action="{{ url_for('change_password') }}">
+          <div class="field">
+            <label for="current_password">Current password</label>
+            <input type="password" id="current_password" name="current_password" required>
+          </div>
+          <div class="field">
+            <label for="new_password">New password (min. 8 characters)</label>
+            <input type="password" id="new_password" name="new_password" required minlength="8">
+          </div>
+          <div class="field">
+            <label for="confirm_password">Confirm new password</label>
+            <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+          </div>
+          <button type="submit" class="btn btn-primary">Update Password</button>
+        </form>
+      </section>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
