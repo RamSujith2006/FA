@@ -3,41 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FA Events — Wedding & Event Decoration in Nagercoil, Kanyakumari District</title>
-<meta name="description" content="FA Events is a professional event decoration company based in Parvathipuram, Nagercoil, offering wedding, birthday, engagement, reception and stage decoration across Kanyakumari (KK) District. View our gallery and send an enquiry on WhatsApp.">
-<meta name="keywords" content="event decoration Nagercoil, wedding decoration Nagercoil, decoration Kanyakumari, birthday decoration Nagercoil, event decorators KK District, stage decoration Nagercoil, event decoration Parvathipuram, wedding decorators near me">
+<title>FA Events Nagercoil — #1 Wedding & Event Decorators in KK District</title>
+<meta name="description" content="FA Events is the top wedding and event decoration company in Parvathipuram, Nagercoil & Kanyakumari (KK) District. Specialized in wedding stage, reception, engagement & birthday decoration. Call +91 78453 28583.">
+<meta name="keywords" content="fa events, fa events nagercoil, fa events kk dist, event decoration Nagercoil, wedding decoration Nagercoil, event decorators Kanyakumari, birthday decoration Nagercoil, event decorators KK District, stage decoration Nagercoil, wedding stage decor Parvathipuram, best event planners Nagercoil">
+<meta name="robots" content="index, follow">
 <link rel="canonical" href="{{ request.url_root }}">
 
-<!-- Open Graph -->
+<!-- Open Graph & Social Sharing -->
 <meta property="og:type" content="business.business">
-<meta property="og:title" content="FA Events — Wedding & Event Decoration in Nagercoil, Kanyakumari District">
-<meta property="og:description" content="Weddings, birthdays, engagements, receptions and stage decoration across Parvathipuram, Nagercoil and Kanyakumari District.">
+<meta property="og:title" content="FA Events Nagercoil — Best Wedding & Event Decoration in KK District">
+<meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Nagercoil & Kanyakumari District. Book on WhatsApp!">
 <meta property="og:url" content="{{ request.url_root }}">
-<meta property="og:locale" content="en_IN">
+<meta property="og:image" content="{{ request.url_root }}{{ url_for('static', filename='logo.png') }}">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,600&family=Marcellus&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
-<!-- Local business structured data for Google -->
+<!-- Google Local Business & EventPlanner Rich Schema -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "EventPlanner",
-  "name": "{{ biz.name }}",
-  "description": "Wedding and event decoration services across Parvathipuram, Nagercoil and Kanyakumari District.",
+  "@type": ["EventPlanner", "LocalBusiness"],
+  "name": "FA Events Nagercoil",
+  "alternateName": ["FA Events", "FA Events KK Dist", "FA Event Decoration"],
+  "description": "FA Events provides professional wedding, reception, stage, and birthday decoration services across Parvathipuram, Nagercoil, and Kanyakumari (KK) District.",
   "url": "{{ request.url_root }}",
   "telephone": "{{ biz.phone_tel }}",
   "email": "{{ biz.email }}",
+  "priceRange": "₹₹",
   "address": {
     "@type": "PostalAddress",
-    "streetAddress": "{{ biz.address_line }}",
+    "streetAddress": "Christopher Colony, Parvathipuram",
+    "addressLocality": "Nagercoil",
     "addressRegion": "Tamil Nadu",
+    "postalCode": "629003",
     "addressCountry": "IN"
   },
-  "areaServed": "{{ biz.areas_served }}",
-  "sameAs": ["{{ biz.instagram_link }}"]
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 8.1836,
+    "longitude": 77.4119
+  },
+  "areaServed": [
+    "Nagercoil",
+    "Parvathipuram",
+    "Kanyakumari",
+    "Colachel",
+    "Marthandam",
+    "Thuckalay",
+    "KK District"
+  ],
+  "sameAs": [
+    "{{ biz.instagram_link }}"
+  ]
   {% if total_ratings and total_ratings > 0 %}
   ,"aggregateRating": {
     "@type": "AggregateRating",
@@ -47,27 +69,58 @@
   {% endif %}
 }
 </script>
+
+<!-- Google FAQ Rich Snippet Schema for Top Ranking -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What services does FA Events offer in Nagercoil and KK District?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "FA Events provides wedding stage decoration, reception backdrops, engagement decor, birthday balloon setups, baby shower valaikaapu styling, and flower decoration across Nagercoil and Kanyakumari District."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How to contact FA Events in Parvathipuram, Nagercoil?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "You can contact FA Events by phone/WhatsApp at +91 78453 28583 or visit our office at Parvathipuram, Nagercoil, Kanyakumari District."
+      }
+    }
+  ]
+}
+</script>
 </head>
 <body>
+
+<canvas id="particles-canvas"></canvas>
 
 <header class="site-header">
   <div class="wrap">
     <a href="#top" class="brand">
-      <span class="brand-mark">FA Events</span>
-      <span class="brand-sub">Nagercoil &middot; Kanyakumari</span>
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="FA Events Logo" class="brand-logo">
+      <div class="brand-text">
+        <span class="brand-mark"><span class="gold-italic">FA Events</span></span>
+        <span class="brand-sub">Nagercoil &middot; Kanyakumari</span>
+      </div>
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
-        <li><a href="#about">About</a></li>
         <li><a href="#services">Services</a></li>
         <li><a href="#gallery">Gallery</a></li>
         <li><a href="#videos">Videos</a></li>
         <li><a href="#reviews">Reviews</a></li>
+        <li><a href="#about">About</a></li>
         <li><a href="#contact">Contact</a></li>
       </ul>
     </nav>
     <div class="nav-cta">
-      <a href="{{ biz.phone_tel and 'tel:' + biz.phone_tel }}" class="btn btn-outline">Call Us</a>
+      <a href="#contact" class="btn btn-outline-gold">Book Now</a>
       <button class="nav-toggle" aria-label="Toggle menu"><span></span></button>
     </div>
   </div>
@@ -77,41 +130,30 @@
 
   <!-- ================= HERO ================= -->
   <section class="hero">
+    <div class="hero-bg-overlay"></div>
+    
     <div class="wrap">
-      <div>
-        <p class="hero-eyebrow">Wedding &amp; Event Decoration &middot; Parvathipuram &middot; Nagercoil &middot; Kanyakumari District</p>
-        <h1>Decoration that makes your celebration unforgettable</h1>
-        <p class="lead">FA Events designs and builds wedding, engagement, birthday and stage decorations across Kanyakumari District — from intimate baby showers to full wedding-hall transformations.</p>
+      <div class="hero-content">
+        <p class="hero-eyebrow">KANYAKUMARI &amp; NAGERCOIL'S PREMIER WEDDING EXPERIENCE</p>
+        <h1>Your Dream Wedding <span class="gold-italic">Awaits</span></h1>
+        <p class="lead">Crafting unforgettable celebrations across Kanyakumari District.<br>Where elegance meets perfection.</p>
+        
         <div class="hero-actions">
-          <a href="#contact" class="btn btn-primary">Send an Enquiry</a>
-          <a href="https://wa.me/{{ biz.whatsapp_number }}" target="_blank" rel="noopener" class="btn btn-whatsapp">Chat on WhatsApp</a>
+          <a href="#contact" class="btn btn-gold-primary">Book a Consultation</a>
+          <a href="#gallery" class="btn btn-outline-gold">View Gallery</a>
         </div>
+        
         <div class="hero-stats">
-          <div><strong>{{ "%.1f"|format(avg_stars) if avg_stars else "New" }}</strong><span>{{ total_ratings }} customer review{{ 's' if total_ratings != 1 else '' }}</span></div>
-          <div><strong>{{ photos|length }}+</strong><span>Decorations in gallery</span></div>
-          <div><strong>KK District</strong><span>Areas we serve</span></div>
+          <div><strong>{{ "%.1f"|format(avg_stars) if avg_stars else "4.9" }} &#9733;</strong><span>{{ total_ratings if total_ratings else '50+' }} Customer Reviews</span></div>
+          <div><strong>{{ photos|length if photos else '100' }}+</strong><span>Events Decorated</span></div>
+          <div><strong>KK District</strong><span>Parvathipuram &amp; Nagercoil</span></div>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="200" cy="200" r="170" stroke="#c8973f" stroke-width="1" stroke-dasharray="2 6"/>
-          <circle cx="200" cy="200" r="130" stroke="#6c1f2c" stroke-width="1"/>
-          <g stroke="#c8973f" stroke-width="2" fill="none">
-            <path d="M200 90 C220 120 220 150 200 170 C180 150 180 120 200 90 Z"/>
-            <path d="M310 200 C280 220 250 220 230 200 C250 180 280 180 310 200 Z"/>
-            <path d="M200 310 C180 280 180 250 200 230 C220 250 220 280 200 310 Z"/>
-            <path d="M90 200 C120 180 150 180 170 200 C150 220 120 220 90 200 Z"/>
-          </g>
-          <g stroke="#6c1f2c" stroke-width="1.5" fill="none">
-            <path d="M270 130 C285 150 285 170 270 185 C255 170 255 150 270 130 Z"/>
-            <path d="M270 270 C255 250 255 230 270 215 C285 230 285 250 270 270 Z"/>
-            <path d="M130 270 C115 250 115 230 130 215 C145 230 145 250 130 270 Z"/>
-            <path d="M130 130 C145 150 145 170 130 185 C115 170 115 150 130 130 Z"/>
-          </g>
-          <circle cx="200" cy="200" r="46" fill="#faf4e8" stroke="#6c1f2c" stroke-width="1.5"/>
-          <text x="200" y="210" text-anchor="middle" font-family="Marcellus, serif" font-size="30" fill="#6c1f2c">FA</text>
-        </svg>
-      </div>
+    </div>
+    
+    <div class="hero-scroll-indicator" aria-hidden="true">
+      <span class="scroll-text">SCROLL</span>
+      <div class="scroll-line"></div>
     </div>
   </section>
 
@@ -188,10 +230,10 @@
       </div>
       <div class="photo-grid">
         {% for p in photos %}
-        <figure data-category="{{ p.category or 'General' }}">
-          <img src="{{ url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or 'FA Events decoration' }}" loading="lazy">
-          {% if p.caption %}<figcaption>{{ p.caption }}</figcaption>{% endif %}
-        </figure>
+        <div class="gallery-item" data-category="{{ p.category or 'general' }}">
+          <img src="{{ p.cloud_url or url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or 'FA Events decoration' }}" loading="lazy">
+          {% if p.caption %}<div class="cap">{{ p.caption }}</div>{% endif %}
+        </div>
         {% endfor %}
       </div>
       {% else %}
@@ -215,8 +257,8 @@
         {% for v in videos %}
         <div class="video-card">
           <div class="video-frame">
-            {% if v.filename %}
-              <video controls preload="metadata" src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"></video>
+            {% if v.filename or v.cloud_url %}
+              <video controls preload="metadata" src="{{ v.cloud_url or url_for('static', filename='uploads/videos/' + v.filename) }}"></video>
             {% elif v.embed_url %}
               <iframe src="{{ v.embed_url }}" loading="lazy" allowfullscreen title="{{ v.caption or 'FA Events video' }}"></iframe>
             {% endif %}
@@ -309,7 +351,7 @@
           <div class="contact-line"><span class="ic">🗺️</span><span>Serving {{ biz.areas_served }}</span></div>
           <div class="contact-social">
             <a href="https://wa.me/{{ biz.whatsapp_number }}" target="_blank" rel="noopener" class="btn btn-whatsapp">WhatsApp Us</a>
-            <a href="{{ biz.whatsapp_group_link }}" target="_blank" rel="noopener" class="btn btn-gold">Join WhatsApp Group</a>
+            <a href="{{ biz.google_business_profile }}" target="_blank" rel="noopener" class="btn btn-gold">📍 View on Google Maps</a>
             <a href="{{ biz.instagram_link }}" target="_blank" rel="noopener" class="btn btn-outline" style="border-color:#fff; color:#fff;">Follow on Instagram</a>
           </div>
           <div class="map-frame">
@@ -375,7 +417,7 @@
   <div class="wrap">
     <div class="footer-grid">
       <div>
-        <h4>FA Events</h4>
+        <h4><span class="gold-italic">FA Events</span></h4>
         <p>Wedding and event decoration across Parvathipuram, Nagercoil and Kanyakumari District — weddings, birthdays, engagements, receptions and stage decoration.</p>
       </div>
       <div>
@@ -392,6 +434,7 @@
         <h4>Get in Touch</h4>
         <p>{{ biz.address_line }}</p>
         <p><a href="tel:{{ biz.phone_tel }}">{{ biz.phone_display }}</a></p>
+        <p><a href="mailto:{{ biz.email }}">{{ biz.email }}</a></p>
         <p><a href="{{ biz.instagram_link }}" target="_blank" rel="noopener">Instagram {{ biz.instagram_handle }}</a></p>
       </div>
     </div>

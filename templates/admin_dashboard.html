@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Dashboard — FA Events</title>
+<title>Admin Dashboard — FA Events Cloud Storage</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
 <div class="admin-shell">
   <div class="admin-topbar">
     <div class="wrap">
-      <span class="brand-mark" style="color:#f2e9df;">FA Events Admin</span>
+      <span class="brand-mark"><span class="gold-italic">FA Events</span> <span style="color:#f2e9df; font-size:0.9em; font-style:normal;">Admin & Cloud Storage</span></span>
       <a href="{{ url_for('admin_logout') }}" class="logout">Log Out</a>
     </div>
   </div>
@@ -99,8 +99,9 @@
         <div class="admin-grid">
           {% for p in photos %}
           <div class="admin-thumb">
-            <img src="{{ url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or '' }}">
+            <img src="{{ p.cloud_url or url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or '' }}">
             <div class="cap">{{ p.caption or p.category or 'Untitled' }}</div>
+            {% if p.cloud_url %}<span class="cloud-tag">☁️ Cloud</span>{% endif %}
             <form method="post" action="{{ url_for('delete_photo', photo_id=p.id) }}" onsubmit="return confirm('Delete this photo?');">
               <button class="mini-btn danger" type="submit">Delete</button>
             </form>
@@ -138,7 +139,8 @@
           {% for v in videos %}
           <div class="admin-thumb">
             {% if v.filename %}
-              <video src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}" muted></video>
+              <video src="{{ v.cloud_url or url_for('static', filename='uploads/videos/' + v.filename) }}" muted controls></video>
+              {% if v.cloud_url %}<span class="cloud-tag">☁️ Cloud</span>{% endif %}
             {% else %}
               <div style="height:130px; display:flex; align-items:center; justify-content:center; background:#eee; font-size:0.78rem; color:var(--ink-soft); text-align:center; padding:6px;">Embedded link</div>
             {% endif %}
@@ -204,5 +206,50 @@
     </div>
   </div>
 </div>
+
+<!-- Media Inspector Lightbox Modal -->
+<div id="cs-media-modal" class="cs-modal" style="display:none;">
+  <div class="cs-modal-overlay" onclick="closeCloudModal()"></div>
+  <div class="cs-modal-content">
+    <button class="cs-modal-close" onclick="closeCloudModal()">✕</button>
+    <div class="cs-modal-body">
+      <div class="cs-modal-preview" id="cs-modal-preview-box"></div>
+      <div class="cs-modal-details">
+        <h4 id="cs-modal-title">Cloud Media Inspector</h4>
+        <div class="cs-spec-group">
+          <div class="cs-spec-row"><span>Filename:</span> <strong id="cs-modal-filename">-</strong></div>
+          <div class="cs-spec-row"><span>Storage Folder:</span> <code id="cs-modal-folder">-</code></div>
+          <div class="cs-spec-row"><span>File Size:</span> <strong id="cs-modal-size">-</strong></div>
+          <div class="cs-spec-row"><span>MIME Type:</span> <span id="cs-modal-type">-</span></div>
+          <div class="cs-spec-row"><span>Uploaded:</span> <span id="cs-modal-created">-</span></div>
+          <div class="cs-spec-row"><span>Cloud Status:</span> <span id="cs-modal-status-badge" class="cs-status-tag">-</span></div>
+        </div>
+
+        <div class="cs-link-box">
+          <label>Firebase Direct CDN URL</label>
+          <div class="cs-copy-input-group">
+            <input type="text" id="cs-modal-url-input" readonly>
+            <button class="mini-btn gold" onclick="copyModalUrl()">Copy URL</button>
+          </div>
+        </div>
+
+        <div class="cs-link-box">
+          <label>HTML Embed Code</label>
+          <div class="cs-copy-input-group">
+            <input type="text" id="cs-modal-embed-input" readonly>
+            <button class="mini-btn gold" onclick="copyModalEmbed()">Copy Embed</button>
+          </div>
+        </div>
+
+        <div class="cs-modal-actions">
+          <a id="cs-modal-download-btn" href="#" download class="btn mini-btn gold" target="_blank">Download File</a>
+          <button id="cs-modal-delete-btn" class="mini-btn danger" onclick="deleteModalFile()">Delete File</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

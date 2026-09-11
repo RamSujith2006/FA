@@ -78,7 +78,7 @@ export FA_SMTP_HOST=smtp.gmail.com
 export FA_SMTP_PORT=587
 export FA_SMTP_USER=your-gmail-address@gmail.com
 export FA_SMTP_PASS=your-gmail-app-password   # use a Gmail "App Password", not your normal password
-export FA_OWNER_EMAIL=faevents.enquiry@gmail.com
+export FA_OWNER_EMAIL=faevents123@gmail.com
 ```
 
 If these are not set, email notification is simply skipped — nothing
