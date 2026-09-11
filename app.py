@@ -104,8 +104,10 @@ FIREBASE_BUCKET_NAME = None
 
 def init_firebase():
     global FIREBASE_DB, FIREBASE_BUCKET, FIREBASE_BUCKET_NAME
+    cred_json_env = os.environ.get("FIREBASE_CREDENTIALS_JSON")
     cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
-    if not cred_path:
+
+    if not cred_path and not cred_json_env:
         for p in [os.path.join(BASE_DIR, "firebase_key.json.json"), os.path.join(BASE_DIR, "firebase_key.json")]:
             if os.path.exists(p):
                 cred_path = p
@@ -113,11 +115,23 @@ def init_firebase():
 
     bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET")
 
-    if cred_path and os.path.exists(cred_path):
-        try:
-            import firebase_admin
-            from firebase_admin import credentials, firestore, storage
+    try:
+        import firebase_admin
+        from firebase_admin import credentials, firestore, storage
 
+        cred = None
+        if cred_json_env:
+            try:
+                cred_dict = json.loads(cred_json_env)
+                if not bucket_name:
+                    project_id = cred_dict.get("project_id")
+                    if project_id:
+                        bucket_name = f"{project_id}.appspot.com"
+                cred = credentials.Certificate(cred_dict)
+            except Exception as e:
+                print(f"[Firebase JSON Env Error]: {e}")
+
+        if not cred and cred_path and os.path.exists(cred_path):
             if not bucket_name:
                 try:
                     with open(cred_path, "r", encoding="utf-8") as f:
@@ -127,9 +141,10 @@ def init_firebase():
                             bucket_name = f"{project_id}.appspot.com"
                 except Exception:
                     pass
+            cred = credentials.Certificate(cred_path)
 
+        if cred:
             if not firebase_admin._apps:
-                cred = credentials.Certificate(cred_path)
                 options = {"storageBucket": bucket_name} if bucket_name else {}
                 firebase_admin.initialize_app(cred, options)
 
@@ -141,8 +156,8 @@ def init_firebase():
                 FIREBASE_BUCKET = storage.bucket()
                 FIREBASE_BUCKET_NAME = FIREBASE_BUCKET.name if FIREBASE_BUCKET else "Default Bucket"
             print(f"[Firebase Storage] Connected to Cloud Storage! Bucket: {FIREBASE_BUCKET_NAME}")
-        except Exception as exc:
-            print(f"[Firebase Storage] Notice: {exc}")
+    except Exception as exc:
+        print(f"[Firebase Storage] Notice: {exc}")
 
 
 # ---------------------------------------------------------------------------
