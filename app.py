@@ -23,9 +23,16 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "faevents.db")
-PHOTO_DIR = os.path.join(BASE_DIR, "static", "uploads", "photos")
-VIDEO_DIR = os.path.join(BASE_DIR, "static", "uploads", "videos")
+IS_VERCEL = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+if IS_VERCEL:
+    DB_PATH = "/tmp/faevents.db"
+    PHOTO_DIR = "/tmp/photos"
+    VIDEO_DIR = "/tmp/videos"
+else:
+    DB_PATH = os.path.join(BASE_DIR, "faevents.db")
+    PHOTO_DIR = os.path.join(BASE_DIR, "static", "uploads", "photos")
+    VIDEO_DIR = os.path.join(BASE_DIR, "static", "uploads", "videos")
 
 # Automatically load environment variables from .env file if present
 env_file = os.path.join(BASE_DIR, ".env")
@@ -46,22 +53,26 @@ if os.path.exists(env_file):
 # Cloudinary Storage Integration (Alternative / Large Media Storage)
 # ---------------------------------------------------------------------------
 HAS_CLOUDINARY = False
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL")
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
 
-if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+if CLOUDINARY_URL or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET):
     try:
         import cloudinary
         import cloudinary.uploader
-        cloudinary.config(
-            cloud_name=CLOUDINARY_CLOUD_NAME,
-            api_key=CLOUDINARY_API_KEY,
-            api_secret=CLOUDINARY_API_SECRET,
-            secure=True
-        )
+        if CLOUDINARY_URL:
+            cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+        else:
+            cloudinary.config(
+                cloud_name=CLOUDINARY_CLOUD_NAME,
+                api_key=CLOUDINARY_API_KEY,
+                api_secret=CLOUDINARY_API_SECRET,
+                secure=True
+            )
         HAS_CLOUDINARY = True
-        print(f"[Cloudinary Storage] Connected! Cloud Name: {CLOUDINARY_CLOUD_NAME}")
+        print(f"[Cloudinary Storage] Connected successfully! Cloud Name: {CLOUDINARY_CLOUD_NAME or 'Active'}")
     except Exception as exc:
         print(f"[Cloudinary Storage] Notice: {exc}")
 
@@ -983,6 +994,13 @@ def upload_photo():
     file.save(local_path)
 
     cloud_url = upload_file_to_firebase(local_path, "photos", unique_name)
+
+    if IS_VERCEL and os.path.exists(local_path):
+        try:
+            os.remove(local_path)
+        except Exception:
+            pass
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     db = get_db()
@@ -1004,7 +1022,7 @@ def upload_photo():
         except Exception as exc:
             app.logger.warning("Firestore photo save failed: %s", exc)
 
-    flash("Photo uploaded successfully to local & cloud storage!")
+    flash("Photo uploaded successfully to Cloud Storage!")
     return redirect(url_for("admin_dashboard") + "#gallery")
 
 
@@ -1052,6 +1070,12 @@ def upload_video():
         local_path = os.path.join(VIDEO_DIR, filename)
         file.save(local_path)
         cloud_url = upload_file_to_firebase(local_path, "videos", filename)
+
+        if IS_VERCEL and os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
 
     if not filename and not embed_url:
         flash("Upload a video file or paste a YouTube/Instagram embed link.")
