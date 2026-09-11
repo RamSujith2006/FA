@@ -182,6 +182,134 @@ def init_firebase():
         print(f"[Firebase Storage] Notice: {exc}")
 
 
+LAST_FIRESTORE_SYNC = 0
+
+def sync_from_firestore_to_sqlite(db, force=False):
+    global LAST_FIRESTORE_SYNC
+    if not FIREBASE_DB:
+        return
+
+    now_ts = datetime.now().timestamp()
+
+    # Check if local SQLite DB is already populated
+    try:
+        p_count = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
+        v_count = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
+        has_data = (p_count > 0 or v_count > 0)
+    except Exception:
+        has_data = False
+
+    # If database is populated, sync at most once every 5 minutes (300s) unless forced
+    min_interval = 300 if has_data else 2
+    if not force and (now_ts - LAST_FIRESTORE_SYNC < min_interval):
+        return
+
+    try:
+        LAST_FIRESTORE_SYNC = now_ts
+
+        # 1. Sync Photos
+        p_docs = FIREBASE_DB.collection("photos").stream()
+        for doc in p_docs:
+            d = doc.to_dict()
+            if d:
+                fname = d.get("filename") or doc.id
+                cloud_url = d.get("cloud_url", "")
+                caption = d.get("caption", "")
+                category = d.get("category", "")
+                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                existing = db.execute("SELECT id FROM photos WHERE filename = ? OR (cloud_url IS NOT NULL AND cloud_url != '' AND cloud_url = ?)", (fname, cloud_url)).fetchone()
+                if not existing:
+                    db.execute(
+                        "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (fname, cloud_url, caption, category, created_at)
+                    )
+                else:
+                    db.execute(
+                        "UPDATE photos SET cloud_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                        (cloud_url, caption, category, created_at, existing["id"])
+                    )
+
+        # 2. Sync Videos
+        v_docs = FIREBASE_DB.collection("videos").stream()
+        for doc in v_docs:
+            d = doc.to_dict()
+            if d:
+                fname = d.get("filename") or ""
+                cloud_url = d.get("cloud_url", "")
+                embed_url = d.get("embed_url", "")
+                caption = d.get("caption", "")
+                category = d.get("category", "")
+                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                existing = None
+                if cloud_url:
+                    existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (cloud_url,)).fetchone()
+                elif fname:
+                    existing = db.execute("SELECT id FROM videos WHERE filename = ?", (fname,)).fetchone()
+                elif embed_url:
+                    existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (embed_url,)).fetchone()
+
+                if not existing:
+                    db.execute(
+                        "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (fname, cloud_url, embed_url, caption, category, created_at)
+                    )
+                else:
+                    db.execute(
+                        "UPDATE videos SET filename = ?, cloud_url = ?, embed_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                        (fname, cloud_url, embed_url, caption, category, created_at, existing["id"])
+                    )
+
+        # 3. Sync Enquiries
+        e_docs = FIREBASE_DB.collection("enquiries").stream()
+        for doc in e_docs:
+            d = doc.to_dict()
+            if d:
+                name = d.get("name", "")
+                phone = d.get("phone", "")
+                email = d.get("email", "")
+                event_type = d.get("event_type", "")
+                event_date = d.get("event_date", "")
+                location = d.get("location", "")
+                message = d.get("message", "")
+                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                is_read = 1 if d.get("is_read") else 0
+
+                existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at)).fetchone()
+                if not existing:
+                    db.execute(
+                        "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (name, phone, email, event_type, event_date, location, message, created_at, is_read)
+                    )
+                else:
+                    db.execute("UPDATE enquiries SET is_read = ? WHERE id = ?", (is_read, existing["id"]))
+
+        # 4. Sync Ratings
+        r_docs = FIREBASE_DB.collection("ratings").stream()
+        for doc in r_docs:
+            d = doc.to_dict()
+            if d:
+                name = d.get("name", "")
+                stars = d.get("stars", 5)
+                comment = d.get("comment", "")
+                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                approved = 1 if d.get("approved") else 0
+
+                existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
+                if not existing:
+                    db.execute(
+                        "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
+                        (name, stars, comment, created_at, approved)
+                    )
+                else:
+                    db.execute("UPDATE ratings SET approved = ? WHERE id = ?", (approved, existing["id"]))
+
+        db.commit()
+    except Exception as exc:
+        print(f"[Firestore Auto Sync Notice]: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
@@ -364,6 +492,7 @@ def favicon():
 @app.route("/")
 def index():
     db = get_db()
+    sync_from_firestore_to_sqlite(db)
     photos = db.execute("SELECT * FROM photos ORDER BY created_at DESC").fetchall()
     videos = db.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
 
@@ -396,6 +525,11 @@ def index():
 
 @app.route("/enquire", methods=["POST"])
 def submit_enquiry():
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
+              "application/json" in request.headers.get("Accept", "") or \
+              request.is_json or \
+              request.headers.get("Sec-Fetch-Mode") == "cors"
+
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
     email = request.form.get("email", "").strip()
@@ -405,43 +539,53 @@ def submit_enquiry():
     message = request.form.get("message", "").strip()
 
     if not name or not phone:
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Please provide your name and phone number."})
         flash("Please provide your name and phone number.")
         return redirect(url_for("index") + "#contact")
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    db = get_db()
-    cursor = db.execute(
-        """
-        INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (name, phone, email, event_type, event_date, location, message, now),
-    )
-    db.commit()
-    enquiry_id = cursor.lastrowid
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db = get_db()
+        cursor = db.execute(
+            """
+            INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (name, phone, email, event_type, event_date, location, message, now),
+        )
+        db.commit()
+        enquiry_id = cursor.lastrowid
 
-    if FIREBASE_DB:
-        try:
-            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({
-                "id": enquiry_id,
-                "name": name,
-                "phone": phone,
-                "email": email,
-                "event_type": event_type,
-                "event_date": event_date,
-                "location": location,
-                "message": message,
-                "created_at": now,
-                "is_read": False,
-            })
-        except Exception as exc:
-            app.logger.warning("Firestore enquiry save failed: %s", exc)
+        if FIREBASE_DB:
+            try:
+                FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({
+                    "id": enquiry_id,
+                    "name": name,
+                    "phone": phone,
+                    "email": email,
+                    "event_type": event_type,
+                    "event_date": event_date,
+                    "location": location,
+                    "message": message,
+                    "created_at": now,
+                    "is_read": False,
+                })
+            except Exception as exc:
+                app.logger.warning("Firestore enquiry save failed: %s", exc)
 
-    notify_owner_new_enquiry({
-        "name": name, "phone": phone, "email": email,
-        "event_type": event_type, "event_date": event_date,
-        "location": location, "message": message,
-    })
+        notify_owner_new_enquiry({
+            "name": name, "phone": phone, "email": email,
+            "event_type": event_type, "event_date": event_date,
+            "location": location, "message": message,
+        })
+    except Exception as exc:
+        app.logger.error("Enquiry save error: %s", exc)
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Could not save enquiry. Please try again."}), 500
+
+    if is_ajax:
+        return jsonify({"ok": True, "message": "Thank you! Your enquiry has been sent. We will call you back shortly."})
 
     flash("Thank you! Your enquiry has been sent. We will call you back shortly.")
     return redirect(url_for("index") + "#contact")
@@ -449,6 +593,11 @@ def submit_enquiry():
 
 @app.route("/rating/submit", methods=["POST"])
 def submit_rating():
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest" or \
+              "application/json" in request.headers.get("Accept", "") or \
+              request.is_json or \
+              request.headers.get("Sec-Fetch-Mode") == "cors"
+
     name = request.form.get("name", "").strip()
     stars = request.form.get("stars", "5")
     comment = request.form.get("comment", "").strip()
@@ -461,16 +610,40 @@ def submit_rating():
         stars_int = 5
 
     if not name:
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Please enter your name for the review."})
         flash("Please enter your name for the review.")
         return redirect(url_for("index") + "#reviews")
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    db = get_db()
-    db.execute(
-        "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, 0)",
-        (name, stars_int, comment, now),
-    )
-    db.commit()
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db = get_db()
+        cursor = db.execute(
+            "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, 0)",
+            (name, stars_int, comment, now),
+        )
+        db.commit()
+        rating_id = cursor.lastrowid
+
+        if FIREBASE_DB:
+            try:
+                FIREBASE_DB.collection("ratings").document(str(rating_id)).set({
+                    "id": rating_id,
+                    "name": name,
+                    "stars": stars_int,
+                    "comment": comment,
+                    "created_at": now,
+                    "approved": False,
+                })
+            except Exception as exc:
+                app.logger.warning("Firestore rating save failed: %s", exc)
+    except Exception as exc:
+        app.logger.error("Rating save error: %s", exc)
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Could not submit review. Please try again."}), 500
+
+    if is_ajax:
+        return jsonify({"ok": True, "message": "Thank you for your rating! It will appear on the website once approved by our team."})
 
     flash("Thank you for your rating! It will appear on the website once approved by our team.")
     return redirect(url_for("index") + "#reviews")
@@ -583,6 +756,7 @@ def delete_file_from_firebase(folder, filename):
 @login_required
 def admin_dashboard():
     db = get_db()
+    sync_from_firestore_to_sqlite(db)
     unread_count = db.execute(
         "SELECT COUNT(*) c FROM enquiries WHERE is_read = 0"
     ).fetchone()["c"]
@@ -972,6 +1146,11 @@ def mark_enquiry_read(enquiry_id):
     db = get_db()
     db.execute("UPDATE enquiries SET is_read = 1 WHERE id = ?", (enquiry_id,))
     db.commit()
+    if FIREBASE_DB:
+        try:
+            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({"is_read": True}, merge=True)
+        except Exception:
+            pass
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
 
@@ -981,6 +1160,11 @@ def delete_enquiry(enquiry_id):
     db = get_db()
     db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
     db.commit()
+    if FIREBASE_DB:
+        try:
+            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
+        except Exception:
+            pass
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
 
@@ -1182,6 +1366,11 @@ def approve_rating(rating_id):
     db = get_db()
     db.execute("UPDATE ratings SET approved = 1 WHERE id = ?", (rating_id,))
     db.commit()
+    if FIREBASE_DB:
+        try:
+            FIREBASE_DB.collection("ratings").document(str(rating_id)).set({"approved": True}, merge=True)
+        except Exception:
+            pass
     return redirect(url_for("admin_dashboard") + "#reviews")
 
 
@@ -1191,6 +1380,11 @@ def delete_rating(rating_id):
     db = get_db()
     db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
     db.commit()
+    if FIREBASE_DB:
+        try:
+            FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
+        except Exception:
+            pass
     return redirect(url_for("admin_dashboard") + "#reviews")
 
 

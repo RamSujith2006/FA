@@ -52,11 +52,15 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const res = await fetch(enquiryForm.action, {
           method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json"
+          },
           body: new FormData(enquiryForm),
         });
         const data = await res.json();
         if (data.ok) {
-          msgBox.textContent = "Thank you! We've received your enquiry and will contact you shortly.";
+          msgBox.textContent = data.message || "Thank you! We've received your enquiry and will contact you shortly.";
           msgBox.classList.add("ok");
           enquiryForm.reset();
         } else {
@@ -85,6 +89,10 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const res = await fetch(ratingForm.action, {
           method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json"
+          },
           body: new FormData(ratingForm),
         });
         const data = await res.json();
@@ -535,10 +543,9 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-/* Direct Media Upload to Cloudinary (Bypasses Vercel 4.5MB Payload Limit) */
+/* Direct Media Upload to Cloudinary for Videos (Bypasses Vercel 4.5MB Payload Limit) */
 document.addEventListener("DOMContentLoaded", () => {
   setupDirectMediaUpload("video-upload-form", "video-file", "video-cloud-url", "video-upload-progress", "video-upload-percent", "video-submit-btn", "videos");
-  setupDirectMediaUpload("photo-upload-form", "photo-file", "photo-cloud-url", "photo-upload-progress", "photo-upload-percent", "photo-submit-btn", "photos");
 });
 
 function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBoxId, percentTextId, submitBtnId, folder) {
@@ -587,62 +594,52 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
       const formData = new FormData();
       formData.append("file", file);
       formData.append("api_key", signData.api_key);
-      formData.append("timestamp", signData.timestamp);
+      formData.append("timestamp", String(signData.timestamp));
       formData.append("folder", signData.folder);
       formData.append("signature", signData.signature);
 
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${signData.resource_type}/upload`;
+      const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/auto/upload`;
 
-      // Step 3: Direct XHR Upload with progress tracking
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", uploadUrl, true);
+      if (percentText) percentText.textContent = "Uploading to Cloud Storage...";
 
-      xhr.upload.onprogress = (evt) => {
-        if (evt.lengthComputable) {
-          const percent = Math.round((evt.loaded / evt.total) * 100);
-          if (percentText) percentText.textContent = `${percent}%`;
-        }
-      };
+      const uploadRes = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData
+      });
 
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const resData = JSON.parse(xhr.responseText);
-          const secureUrl = resData.secure_url || resData.url;
-
-          if (secureUrl) {
-            if (percentText) percentText.textContent = "100% (Saving...)";
-            if (cloudUrlInput) cloudUrlInput.value = secureUrl;
-
-            // Clear binary file from input so Vercel payload stays tiny (<1KB)!
-            fileInput.value = "";
-
-            // Submit the form with text fields only
-            form.submit();
-          } else {
-            alert("Upload completed but failed to parse cloud URL.");
-            resetUploadUI();
+      if (!uploadRes.ok) {
+        let errMessage = `Upload failed with status ${uploadRes.status}`;
+        try {
+          const errData = await uploadRes.json();
+          if (errData.error && errData.error.message) {
+            errMessage = errData.error.message;
           }
-        } else {
-          try {
-            const errJson = JSON.parse(xhr.responseText);
-            alert(`Cloud Storage Error: ${errJson.error?.message || "Upload failed"}`);
-          } catch (_) {
-            alert(`Cloud Storage upload failed with status ${xhr.status}`);
-          }
-          resetUploadUI();
-        }
-      };
-
-      xhr.onerror = () => {
-        alert("Network error during direct Cloud Storage upload.");
+        } catch (_) {}
+        alert(`Cloud Storage Upload Error: ${errMessage}`);
         resetUploadUI();
-      };
+        return;
+      }
 
-      xhr.send(formData);
+      const resData = await uploadRes.json();
+      const secureUrl = resData.secure_url || resData.url;
+
+      if (secureUrl) {
+        if (percentText) percentText.textContent = "100% (Saving...)";
+        if (cloudUrlInput) cloudUrlInput.value = secureUrl;
+
+        // Clear binary file from input so Vercel payload stays tiny (<1KB)
+        fileInput.value = "";
+
+        // Submit form with text fields only
+        form.submit();
+      } else {
+        alert("Upload completed but failed to parse cloud URL.");
+        resetUploadUI();
+      }
 
     } catch (err) {
       console.warn("Direct upload error, falling back to standard form submit:", err);
-      // Fallback: submit standard form if direct upload fails
+      alert(`Notice: Direct upload error (${err.message || "Network issue"}). Attempting server submission...`);
       form.submit();
     }
 
