@@ -80,10 +80,11 @@
       <!-- ============== PHOTO GALLERY ============== -->
       <section id="gallery" class="admin-panel">
         <h3>Photo Gallery</h3>
-        <form class="upload-form" action="{{ url_for('upload_photo') }}" method="post" enctype="multipart/form-data">
+        <form id="photo-upload-form" class="upload-form" action="{{ url_for('upload_photo') }}" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="cloud_url" id="photo-cloud-url">
           <div class="field">
             <label for="photo-file">Photo file (JPG, PNG, WEBP, GIF)</label>
-            <input type="file" id="photo-file" name="photo" accept="image/*" required>
+            <input type="file" id="photo-file" name="photo" accept="image/*">
           </div>
           <div class="field">
             <label for="photo-caption">Caption</label>
@@ -93,7 +94,10 @@
             <label for="photo-category">Category</label>
             <input type="text" id="photo-category" name="category" placeholder="e.g. Wedding, Birthday, Stage">
           </div>
-          <button type="submit" class="btn btn-primary">Upload Photo</button>
+          <div id="photo-upload-progress" style="display:none; margin:10px 0; padding:10px 14px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:6px; color:#d4af37; font-weight:500;">
+            ☁️ Uploading photo to Cloud Storage... <span id="photo-upload-percent">0%</span>
+          </div>
+          <button type="submit" id="photo-submit-btn" class="btn btn-primary">Upload Photo</button>
         </form>
 
         <div class="admin-grid">
@@ -115,9 +119,10 @@
       <!-- ============== VIDEO GALLERY ============== -->
       <section id="videos" class="admin-panel">
         <h3>Video Gallery</h3>
-        <form class="upload-form" action="{{ url_for('upload_video') }}" method="post" enctype="multipart/form-data">
+        <form id="video-upload-form" class="upload-form" action="{{ url_for('upload_video') }}" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="cloud_url" id="video-cloud-url">
           <div class="field">
-            <label for="video-file">Upload a video file (MP4, WEBM, MOV) — optional</label>
+            <label for="video-file">Upload a video file (MP4, WEBM, MOV) — streams direct to Cloud Storage</label>
             <input type="file" id="video-file" name="video" accept="video/*">
           </div>
           <div class="field">
@@ -132,7 +137,10 @@
             <label for="video-category">Category</label>
             <input type="text" id="video-category" name="category" placeholder="e.g. Wedding, Birthday">
           </div>
-          <button type="submit" class="btn btn-primary">Add Video</button>
+          <div id="video-upload-progress" style="display:none; margin:10px 0; padding:10px 14px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:6px; color:#d4af37; font-weight:500;">
+            ☁️ Uploading video directly to Cloud Storage... <span id="video-upload-percent">0%</span>
+          </div>
+          <button type="submit" id="video-submit-btn" class="btn btn-primary">Add Video</button>
         </form>
 
         <div class="admin-grid">

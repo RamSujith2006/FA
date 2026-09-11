@@ -11,6 +11,7 @@ import os
 import sqlite3
 import smtplib
 import json
+import urllib.parse
 from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
@@ -58,21 +59,31 @@ CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
 
-if CLOUDINARY_URL or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET):
+if CLOUDINARY_URL:
+    try:
+        parsed_c = urllib.parse.urlparse(CLOUDINARY_URL)
+        if parsed_c.username:
+            CLOUDINARY_API_KEY = parsed_c.username
+        if parsed_c.password:
+            CLOUDINARY_API_SECRET = parsed_c.password
+        if parsed_c.hostname:
+            CLOUDINARY_CLOUD_NAME = parsed_c.hostname
+    except Exception as exc:
+        print(f"[Cloudinary Parse Error]: {exc}")
+
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     try:
         import cloudinary
         import cloudinary.uploader
-        if CLOUDINARY_URL:
-            cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
-        else:
-            cloudinary.config(
-                cloud_name=CLOUDINARY_CLOUD_NAME,
-                api_key=CLOUDINARY_API_KEY,
-                api_secret=CLOUDINARY_API_SECRET,
-                secure=True
-            )
+        import cloudinary.utils
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+            secure=True
+        )
         HAS_CLOUDINARY = True
-        print(f"[Cloudinary Storage] Connected successfully! Cloud Name: {CLOUDINARY_CLOUD_NAME or 'Active'}")
+        print(f"[Cloudinary Storage] Connected successfully! Cloud Name: {CLOUDINARY_CLOUD_NAME}")
     except Exception as exc:
         print(f"[Cloudinary Storage] Notice: {exc}")
 
@@ -973,35 +984,68 @@ def delete_enquiry(enquiry_id):
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
 
+@app.route("/admin/api/cloudinary-sign", methods=["GET", "POST"])
+@login_required
+def api_cloudinary_sign():
+    if not HAS_CLOUDINARY or not CLOUDINARY_API_SECRET:
+        return jsonify({"error": "Cloudinary storage is not configured on server"}), 400
+
+    folder = request.args.get("folder") or request.form.get("folder") or "videos"
+    if folder not in ["photos", "videos"]:
+        folder = "videos"
+
+    timestamp = int(datetime.now().timestamp())
+    target_folder = f"fa-events/{folder}"
+    params_to_sign = {
+        "timestamp": timestamp,
+        "folder": target_folder
+    }
+
+    import cloudinary.utils
+    signature = cloudinary.utils.api_sign_request(params_to_sign, CLOUDINARY_API_SECRET)
+
+    return jsonify({
+        "signature": signature,
+        "timestamp": timestamp,
+        "api_key": CLOUDINARY_API_KEY,
+        "cloud_name": CLOUDINARY_CLOUD_NAME,
+        "folder": target_folder,
+        "resource_type": "video" if folder == "videos" else "image"
+    })
+
+
 @app.route("/admin/photo/upload", methods=["POST"])
 @login_required
 def upload_photo():
     file = request.files.get("photo")
     caption = request.form.get("caption", "").strip()
     category = request.form.get("category", "").strip()
+    cloud_url = request.form.get("cloud_url", "").strip()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if not file or file.filename == "":
+    unique_name = None
+
+    if cloud_url:
+        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_photo.jpg"
+    elif file and file.filename != "":
+        if not allowed_file(file.filename, ALLOWED_IMAGE_EXT):
+            flash("Unsupported image format. Use JPG, PNG, WEBP or GIF.")
+            return redirect(url_for("admin_dashboard") + "#gallery")
+
+        filename = secure_filename(file.filename)
+        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+        local_path = os.path.join(PHOTO_DIR, unique_name)
+        file.save(local_path)
+        cloud_url = upload_file_to_firebase(local_path, "photos", unique_name)
+
+        if IS_VERCEL and os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
+    else:
         flash("Please choose a photo to upload.")
         return redirect(url_for("admin_dashboard") + "#gallery")
-
-    if not allowed_file(file.filename, ALLOWED_IMAGE_EXT):
-        flash("Unsupported image format. Use JPG, PNG, WEBP or GIF.")
-        return redirect(url_for("admin_dashboard") + "#gallery")
-
-    filename = secure_filename(file.filename)
-    unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
-    local_path = os.path.join(PHOTO_DIR, unique_name)
-    file.save(local_path)
-
-    cloud_url = upload_file_to_firebase(local_path, "photos", unique_name)
-
-    if IS_VERCEL and os.path.exists(local_path):
-        try:
-            os.remove(local_path)
-        except Exception:
-            pass
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     db = get_db()
     db.execute(
@@ -1056,12 +1100,14 @@ def upload_video():
     embed_url = request.form.get("embed_url", "").strip()
     caption = request.form.get("caption", "").strip()
     category = request.form.get("category", "").strip()
+    cloud_url = request.form.get("cloud_url", "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     filename = None
-    cloud_url = None
 
-    if file and file.filename:
+    if cloud_url:
+        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_video.mp4"
+    elif file and file.filename:
         if not allowed_file(file.filename, ALLOWED_VIDEO_EXT):
             flash("Unsupported video format. Use MP4, WEBM or MOV.")
             return redirect(url_for("admin_dashboard") + "#videos")
@@ -1077,14 +1123,14 @@ def upload_video():
             except Exception:
                 pass
 
-    if not filename and not embed_url:
+    if not filename and not embed_url and not cloud_url:
         flash("Upload a video file or paste a YouTube/Instagram embed link.")
         return redirect(url_for("admin_dashboard") + "#videos")
 
     db = get_db()
     db.execute(
         "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (filename, cloud_url, embed_url, caption, category, now),
+        (filename or "", cloud_url, embed_url, caption, category, now),
     )
     db.commit()
 
@@ -1092,7 +1138,7 @@ def upload_video():
         try:
             doc_id = filename or f"embed_{datetime.now().strftime('%Y%m%d%H%M%S')}"
             FIREBASE_DB.collection("videos").document(doc_id).set({
-                "filename": filename,
+                "filename": filename or "",
                 "cloud_url": cloud_url,
                 "embed_url": embed_url,
                 "caption": caption,
@@ -1102,7 +1148,7 @@ def upload_video():
         except Exception as exc:
             app.logger.warning("Firestore video save failed: %s", exc)
 
-    flash("Video added successfully!")
+    flash("Video added successfully to Cloud Storage!")
     return redirect(url_for("admin_dashboard") + "#videos")
 
 
