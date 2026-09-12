@@ -738,9 +738,17 @@ def sync_from_firestore_to_sqlite(db, force=False):
     sync_enquiries_from_cloud(db, deleted_set=deleted_set)
     sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
-    # 3. Always sync photos & videos to keep dashboard 100% accurate
-    sync_photos_from_cloud(db, deleted_set=deleted_set)
-    sync_videos_from_cloud(db, deleted_set=deleted_set)
+    # 3. Only sync photos & videos from cloud if local SQLite is empty (cold start)
+    try:
+        p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
+        v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
+    except Exception:
+        p_cnt = v_cnt = 0
+
+    if p_cnt == 0:
+        sync_photos_from_cloud(db, deleted_set=deleted_set)
+    if v_cnt == 0:
+        sync_videos_from_cloud(db, deleted_set=deleted_set)
 
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -1775,7 +1783,8 @@ def upload_photo():
     unique_name = None
 
     if cloud_url:
-        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_photo.jpg"
+        parsed = cloud_url.rsplit("/", 1)[-1].split("?")[0]
+        unique_name = parsed if parsed and "." in parsed else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_photo.jpg"
     elif file and file.filename != "":
         if not allowed_file(file.filename, ALLOWED_IMAGE_EXT):
             flash("Unsupported image format. Use JPG, PNG, WEBP or GIF.")
@@ -1840,6 +1849,7 @@ def delete_photo(photo_id):
         fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
         db.execute("DELETE FROM photos WHERE id = ?", (row["id"],))
 
+    db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (f"photo_{photo_id}", now))
     if c_url:
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (c_url, now))
     if fn:
@@ -1882,7 +1892,8 @@ def upload_video():
     filename = None
 
     if cloud_url:
-        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_video.mp4"
+        parsed = cloud_url.rsplit("/", 1)[-1].split("?")[0]
+        filename = parsed if parsed and "." in parsed else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_video.mp4"
     elif file and file.filename:
         if not allowed_file(file.filename, ALLOWED_VIDEO_EXT):
             flash("Unsupported video format. Use MP4, WEBM or MOV.")
@@ -1952,6 +1963,8 @@ def delete_video(video_id):
         fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
         embed = row["embed_url"] if "embed_url" in row.keys() and row["embed_url"] else embed
         db.execute("DELETE FROM videos WHERE id = ?", (row["id"],))
+
+    db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (f"video_{video_id}", now))
 
     if c_url:
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (c_url, now))
