@@ -194,20 +194,29 @@ def init_mongo():
     global HAS_MONGO, MONGO_DB, MONGO_URI
     MONGO_URI = os.environ.get("MONGO_URI")
     if not MONGO_URI:
-        return
+        return None
+    if HAS_MONGO and MONGO_DB is not None:
+        return MONGO_DB
     try:
         from pymongo import MongoClient
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
-        client.admin.command('ping')
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
         parsed = urllib.parse.urlparse(MONGO_URI)
         db_name = parsed.path.lstrip("/").split("?")[0] or "faevents"
         MONGO_DB = client[db_name]
         HAS_MONGO = True
         print(f"[MongoDB Atlas] Connected successfully to Cloud Database: {db_name}")
+        return MONGO_DB
     except Exception as exc:
         print(f"[MongoDB Atlas Notice]: {exc}")
+        return None
 
 init_mongo()
+
+def get_mongo_db():
+    if not HAS_MONGO or MONGO_DB is None:
+        return init_mongo()
+    return MONGO_DB
+
 
 
 def delete_file_from_cloud(folder, filename=None, cloud_url=None):
