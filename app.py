@@ -335,8 +335,13 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
 
         del_id1 = f"enquiry_{created_at}_{phone}"
         del_id2 = f"enquiry_{item_id}" if item_id else None
+        del_id3 = f"enquiry_{phone}" if phone else None
+        del_id4 = f"enquiry_{name}_{phone}" if (name and phone) else None
 
-        if del_id1 in deleted_set or (del_id2 and del_id2 in deleted_set):
+        if (del_id1 in deleted_set or 
+            (del_id2 and del_id2 in deleted_set) or 
+            (del_id3 and del_id3 in deleted_set) or 
+            (del_id4 and del_id4 in deleted_set)):
             if item_id:
                 db.execute("DELETE FROM enquiries WHERE id = ?", (item_id,))
             continue
@@ -466,10 +471,13 @@ def push_deleted_items_to_cloud(db):
         print(f"[Push Deleted Items Error]: {exc}")
 
 
-def push_photos_to_cloud(db):
+def push_photos_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM photos ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
+        if not data and not allow_empty:
+            print("[Push Photos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+            return
 
         if HAS_CLOUDINARY:
             try:
@@ -488,10 +496,13 @@ def push_photos_to_cloud(db):
         print(f"[Push Photos Error]: {exc}")
 
 
-def push_videos_to_cloud(db):
+def push_videos_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM videos ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
+        if not data and not allow_empty:
+            print("[Push Videos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+            return
 
         if HAS_CLOUDINARY:
             try:
@@ -1193,61 +1204,57 @@ def upload_file_to_firebase(local_path, folder, filename):
 
 
 def bg_cloud_sync(action_type, **kwargs):
-    def _worker():
-        try:
-            with sqlite3.connect(DB_PATH) as db:
-                db.row_factory = sqlite3.Row
-                if action_type == "delete_photo":
-                    fn = kwargs.get("fn")
-                    c_url = kwargs.get("c_url")
-                    delete_file_from_cloud("photos", fn, cloud_url=c_url)
-                    if FIREBASE_DB and fn:
-                        try:
-                            FIREBASE_DB.collection("photos").document(fn).delete()
-                        except Exception:
-                            pass
-                    push_photos_to_cloud(db)
-                    push_deleted_items_to_cloud(db)
+    try:
+        with sqlite3.connect(DB_PATH) as db:
+            db.row_factory = sqlite3.Row
+            if action_type == "delete_photo":
+                fn = kwargs.get("fn")
+                c_url = kwargs.get("c_url")
+                delete_file_from_cloud("photos", fn, cloud_url=c_url)
+                if FIREBASE_DB and fn:
+                    try:
+                        FIREBASE_DB.collection("photos").document(fn).delete()
+                    except Exception:
+                        pass
+                push_photos_to_cloud(db, allow_empty=True)
+                push_deleted_items_to_cloud(db)
 
-                elif action_type == "delete_video":
-                    fn = kwargs.get("fn")
-                    c_url = kwargs.get("c_url")
-                    embed = kwargs.get("embed")
-                    video_id = kwargs.get("video_id")
-                    delete_file_from_cloud("videos", fn, cloud_url=c_url)
-                    if FIREBASE_DB:
-                        try:
-                            doc_id = fn or embed or str(video_id)
-                            FIREBASE_DB.collection("videos").document(doc_id).delete()
-                        except Exception:
-                            pass
-                    push_videos_to_cloud(db)
-                    push_deleted_items_to_cloud(db)
+            elif action_type == "delete_video":
+                fn = kwargs.get("fn")
+                c_url = kwargs.get("c_url")
+                embed = kwargs.get("embed")
+                video_id = kwargs.get("video_id")
+                delete_file_from_cloud("videos", fn, cloud_url=c_url)
+                if FIREBASE_DB:
+                    try:
+                        doc_id = fn or embed or str(video_id)
+                        FIREBASE_DB.collection("videos").document(doc_id).delete()
+                    except Exception:
+                        pass
+                push_videos_to_cloud(db, allow_empty=True)
+                push_deleted_items_to_cloud(db)
 
-                elif action_type == "delete_enquiry":
-                    enquiry_id = kwargs.get("enquiry_id")
-                    push_enquiries_to_cloud(db)
-                    push_deleted_items_to_cloud(db)
-                    if FIREBASE_DB and enquiry_id:
-                        try:
-                            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
-                        except Exception:
-                            pass
+            elif action_type == "delete_enquiry":
+                enquiry_id = kwargs.get("enquiry_id")
+                push_enquiries_to_cloud(db, allow_empty=True)
+                push_deleted_items_to_cloud(db)
+                if FIREBASE_DB and enquiry_id:
+                    try:
+                        FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
+                    except Exception:
+                        pass
 
-                elif action_type == "delete_rating":
-                    rating_id = kwargs.get("rating_id")
-                    push_ratings_to_cloud(db)
-                    push_deleted_items_to_cloud(db)
-                    if FIREBASE_DB and rating_id:
-                        try:
-                            FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
-                        except Exception:
-                            pass
-        except Exception as exc:
-            print(f"[Background Cloud Sync Error]: {exc}")
-
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
+            elif action_type == "delete_rating":
+                rating_id = kwargs.get("rating_id")
+                push_ratings_to_cloud(db, allow_empty=True)
+                push_deleted_items_to_cloud(db)
+                if FIREBASE_DB and rating_id:
+                    try:
+                        FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
+                    except Exception:
+                        pass
+    except Exception as exc:
+        print(f"[Cloud Sync Error]: {exc}")
 
 
 def delete_file_from_cloud(folder, filename=None, cloud_url=None):
@@ -1722,10 +1729,13 @@ def delete_enquiry(enquiry_id):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_ids = [
             f"enquiry_{row['created_at']}_{row['phone']}",
-            f"enquiry_{row['id']}"
+            f"enquiry_{row['id']}",
+            f"enquiry_{row['phone']}",
+            f"enquiry_{row['name']}_{row['phone']}"
         ]
         for d_id in del_ids:
-            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (d_id, now))
+            if d_id and d_id != "enquiry_":
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (d_id, now))
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
         push_enquiries_to_cloud(db, allow_empty=True)
