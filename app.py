@@ -406,10 +406,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
         item_id = d.get("id")
 
         possible_del = {
-            f"enquiry_{created_at}_{phone}",
+            f"enquiry_{created_at}_{phone}" if (created_at and phone) else None,
             f"enquiry_{item_id}" if item_id else None,
-            f"enquiry_{phone}" if phone else None,
-            f"enquiry_{name}" if name else None,
         }
         possible_del.discard(None)
 
@@ -520,9 +518,8 @@ def sync_ratings_from_cloud(db, deleted_set=None):
         item_id = d.get("id")
 
         possible_del = {
-            f"rating_{created_at}_{name}",
+            f"rating_{created_at}_{name}" if (created_at and name) else None,
             f"rating_{item_id}" if item_id else None,
-            f"rating_{name}" if name else None,
         }
         possible_del.discard(None)
 
@@ -715,18 +712,12 @@ def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, 
             ids_to_add.add(f"enquiry_{created_at}_{phone}")
         if item_id:
             ids_to_add.add(f"enquiry_{item_id}")
-        if phone:
-            ids_to_add.add(f"enquiry_{phone}")
-        if name:
-            ids_to_add.add(f"enquiry_{name}")
 
     if item_type == "rating":
         if created_at and name:
             ids_to_add.add(f"rating_{created_at}_{name}")
         if item_id:
             ids_to_add.add(f"rating_{item_id}")
-        if name:
-            ids_to_add.add(f"rating_{name}")
 
     for val in ids_to_add:
         if val and str(val).strip():
