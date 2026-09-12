@@ -711,16 +711,8 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
-    # Rate limit cloud downloads: sync at most once every 60 seconds (unless forced or DB empty)
-    try:
-        p_count = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
-        v_count = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
-        has_data = (p_count > 0 or v_count > 0)
-    except Exception:
-        has_data = False
-
-    min_interval = 60 if has_data else 1
-    if not force and (now_ts - LAST_FIRESTORE_SYNC < min_interval):
+    # Rate limit: sync at most once every 2 seconds to prevent rapid double-clicks while ensuring fresh data on refresh
+    if not force and (now_ts - LAST_FIRESTORE_SYNC < 2):
         return
 
     LAST_FIRESTORE_SYNC = now_ts
@@ -1104,6 +1096,7 @@ def submit_enquiry():
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db = get_db()
+        sync_enquiries_from_cloud(db)
         cursor = db.execute(
             """
             INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at)
@@ -1177,6 +1170,7 @@ def submit_rating():
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db = get_db()
+        sync_ratings_from_cloud(db)
         cursor = db.execute(
             "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, 0)",
             (name, stars_int, comment, now),
@@ -1809,6 +1803,7 @@ def api_cloud_storage_sync():
 @login_required
 def mark_enquiry_read(enquiry_id):
     db = get_db()
+    sync_enquiries_from_cloud(db)
     db.execute("UPDATE enquiries SET is_read = 1 WHERE id = ?", (enquiry_id,))
     db.commit()
     push_enquiries_to_cloud(db)
@@ -1824,6 +1819,7 @@ def mark_enquiry_read(enquiry_id):
 @login_required
 def delete_enquiry(enquiry_id):
     db = get_db()
+    sync_enquiries_from_cloud(db)
     row = db.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
     if row:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2086,6 +2082,7 @@ def delete_video(video_id):
 @login_required
 def approve_rating(rating_id):
     db = get_db()
+    sync_ratings_from_cloud(db)
     db.execute("UPDATE ratings SET approved = 1 WHERE id = ?", (rating_id,))
     db.commit()
     push_ratings_to_cloud(db)
@@ -2101,6 +2098,7 @@ def approve_rating(rating_id):
 @login_required
 def delete_rating(rating_id):
     db = get_db()
+    sync_ratings_from_cloud(db)
     row = db.execute("SELECT * FROM ratings WHERE id = ?", (rating_id,)).fetchone()
     if row:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
