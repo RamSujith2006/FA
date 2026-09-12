@@ -171,7 +171,7 @@ def init_firebase():
                 options = {"storageBucket": bucket_name} if bucket_name else {}
                 firebase_admin.initialize_app(cred, options)
 
-            FIREBASE_DB = firestore.client()
+            FIREBASE_DB = None  # Disabled Firestore API connection to prevent 403 gRPC timeouts
             if bucket_name:
                 FIREBASE_BUCKET = storage.bucket(bucket_name)
                 FIREBASE_BUCKET_NAME = bucket_name
