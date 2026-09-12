@@ -316,23 +316,35 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
     for d in enquiries_list:
         if not d:
             continue
-        name = d.get("name", "")
-        phone = d.get("phone", "")
-        email = d.get("email", "")
-        event_type = d.get("event_type", "")
-        event_date = d.get("event_date", "")
-        location = d.get("location", "")
-        message = d.get("message", "")
-        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        name = d.get("name", "").strip()
+        phone = d.get("phone", "").strip()
+        email = d.get("email", "").strip()
+        event_type = d.get("event_type", "").strip()
+        event_date = d.get("event_date", "").strip()
+        location = d.get("location", "").strip()
+        message = d.get("message", "").strip()
+        created_at = d.get("created_at") or "2026-01-01 00:00:00"
         is_read = 1 if d.get("is_read") else 0
+        item_id = d.get("id")
 
-        del_id = f"enquiry_{created_at}_{phone}"
-        del_id_alt = f"enquiry_{created_at}_{phone}_{name}"
-        if del_id in deleted_set or del_id_alt in deleted_set:
-            db.execute("DELETE FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at))
+        del_id1 = f"enquiry_{created_at}_{phone}"
+        del_id2 = f"enquiry_{created_at}_{phone}_{name}"
+        del_id3 = f"enquiry_{phone}_{name}"
+        del_id4 = f"enquiry_{item_id}" if item_id else None
+
+        if del_id1 in deleted_set or del_id2 in deleted_set or del_id3 in deleted_set or (del_id4 and del_id4 in deleted_set):
+            if phone:
+                db.execute("DELETE FROM enquiries WHERE phone = ? AND (created_at = ? OR name = ?)", (phone, created_at, name))
+            if item_id:
+                db.execute("DELETE FROM enquiries WHERE id = ?", (item_id,))
             continue
 
-        existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at)).fetchone()
+        existing = None
+        if item_id:
+            existing = db.execute("SELECT id FROM enquiries WHERE id = ?", (item_id,)).fetchone()
+        if not existing and phone:
+            existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND (name = ? OR message = ?)", (phone, name, message)).fetchone()
+
         if not existing:
             db.execute(
                 "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -340,6 +352,16 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
             )
         else:
             db.execute("UPDATE enquiries SET is_read = ? WHERE id = ?", (is_read, existing["id"]))
+
+    try:
+        db.execute("""
+            DELETE FROM enquiries WHERE rowid NOT IN (
+                SELECT MIN(rowid) FROM enquiries GROUP BY name, phone, COALESCE(message, '')
+            )
+        """)
+    except Exception:
+        pass
+
     db.commit()
 
 
@@ -379,18 +401,29 @@ def sync_ratings_from_cloud(db, deleted_set=None):
     for d in ratings_list:
         if not d:
             continue
-        name = d.get("name", "")
+        name = d.get("name", "").strip()
         stars = d.get("stars", 5)
-        comment = d.get("comment", "")
-        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        comment = d.get("comment", "").strip()
+        created_at = d.get("created_at") or "2026-01-01 00:00:00"
         approved = 1 if d.get("approved") else 0
+        item_id = d.get("id")
 
-        del_id = f"rating_{created_at}_{name}"
-        if del_id in deleted_set:
-            db.execute("DELETE FROM ratings WHERE name = ? AND created_at = ?", (name, created_at))
+        del_id1 = f"rating_{created_at}_{name}"
+        del_id2 = f"rating_{name}_{comment}"
+        del_id3 = f"rating_{item_id}" if item_id else None
+
+        if del_id1 in deleted_set or del_id2 in deleted_set or (del_id3 and del_id3 in deleted_set):
+            db.execute("DELETE FROM ratings WHERE name = ? AND (created_at = ? OR comment = ?)", (name, created_at, comment))
+            if item_id:
+                db.execute("DELETE FROM ratings WHERE id = ?", (item_id,))
             continue
 
-        existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
+        existing = None
+        if item_id:
+            existing = db.execute("SELECT id FROM ratings WHERE id = ?", (item_id,)).fetchone()
+        if not existing and name:
+            existing = db.execute("SELECT id FROM ratings WHERE name = ? AND comment = ?", (name, comment)).fetchone()
+
         if not existing:
             db.execute(
                 "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
@@ -398,6 +431,16 @@ def sync_ratings_from_cloud(db, deleted_set=None):
             )
         else:
             db.execute("UPDATE ratings SET approved = ? WHERE id = ?", (approved, existing["id"]))
+
+    try:
+        db.execute("""
+            DELETE FROM ratings WHERE rowid NOT IN (
+                SELECT MIN(rowid) FROM ratings GROUP BY name, stars, COALESCE(comment, '')
+            )
+        """)
+    except Exception:
+        pass
+
     db.commit()
 
 
@@ -668,6 +711,20 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
+    # Rate limit cloud downloads: sync at most once every 60 seconds (unless forced or DB empty)
+    try:
+        p_count = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
+        v_count = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
+        has_data = (p_count > 0 or v_count > 0)
+    except Exception:
+        has_data = False
+
+    min_interval = 60 if has_data else 1
+    if not force and (now_ts - LAST_FIRESTORE_SYNC < min_interval):
+        return
+
+    LAST_FIRESTORE_SYNC = now_ts
+
     # 1. Always sync deleted_items blacklist from Cloud Storage first
     sync_deleted_items_from_cloud(db)
 
@@ -679,26 +736,13 @@ def sync_from_firestore_to_sqlite(db, force=False):
     except Exception:
         pass
 
-    # 2. Always sync enquiries & ratings
-    sync_enquiries_from_cloud(db)
-    sync_ratings_from_cloud(db)
+    # 2. Sync enquiries & ratings
+    sync_enquiries_from_cloud(db, deleted_set=deleted_set)
+    sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
-    # 3. Always sync photos & videos from Cloud Storage raw JSON
+    # 3. Sync photos & videos from Cloud Storage raw JSON
     sync_photos_from_cloud(db, deleted_set=deleted_set)
     sync_videos_from_cloud(db, deleted_set=deleted_set)
-
-    # Check if local SQLite DB is already populated for media
-    try:
-        p_count = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
-        v_count = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
-        has_data = (p_count > 0 or v_count > 0)
-    except Exception:
-        has_data = False
-
-    # If database is populated, sync media API at most once every 5 minutes (300s) unless forced
-    min_interval = 300 if has_data else 1
-    if not force and (now_ts - LAST_FIRESTORE_SYNC < min_interval):
-        return
 
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -1782,10 +1826,14 @@ def delete_enquiry(enquiry_id):
     row = db.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
     if row:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        del_id = f"enquiry_{row['created_at']}_{row['phone']}"
-        del_id_alt = f"enquiry_{row['created_at']}_{row['phone']}_{row['name']}"
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id, now))
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id_alt, now))
+        del_ids = [
+            f"enquiry_{row['created_at']}_{row['phone']}",
+            f"enquiry_{row['created_at']}_{row['phone']}_{row['name']}",
+            f"enquiry_{row['phone']}_{row['name']}",
+            f"enquiry_{row['id']}"
+        ]
+        for d_id in del_ids:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (d_id, now))
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
         bg_cloud_sync("delete_enquiry", enquiry_id=enquiry_id)
