@@ -407,7 +407,6 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
             f"enquiry_{item_id}" if item_id else None,
             f"enquiry_{phone}" if phone else None,
             f"enquiry_{name}" if name else None,
-            str(item_id) if item_id else None,
         }
         possible_del.discard(None)
 
@@ -681,7 +680,6 @@ def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, 
 
     if item_id:
         ids_to_add.add(f"{item_type}_{item_id}")
-        ids_to_add.add(str(item_id))
 
     if fn:
         ids_to_add.add(fn)
@@ -786,7 +784,7 @@ def is_item_deleted(deleted_set, fn=None, cloud_url=None, embed_url=None, public
 
     targets = set()
     for item in (fn, cloud_url, embed_url, public_id):
-        if item:
+        if item and not str(item).strip().isdigit():
             targets.update(normalize_media_identifier(item))
 
     if not targets:
@@ -794,7 +792,8 @@ def is_item_deleted(deleted_set, fn=None, cloud_url=None, embed_url=None, public
 
     normalized_deleted = set()
     for d in deleted_set:
-        normalized_deleted.update(normalize_media_identifier(d))
+        if d and not str(d).strip().isdigit():
+            normalized_deleted.update(normalize_media_identifier(d))
 
     return bool(targets.intersection(normalized_deleted))
 
