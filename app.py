@@ -1076,6 +1076,7 @@ def index():
         ratings=approved_ratings,
         avg_stars=avg_stars,
         total_reviews=total_reviews,
+        total_ratings=total_reviews,
     )
 
 
