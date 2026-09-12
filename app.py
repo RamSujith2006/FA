@@ -88,8 +88,8 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     except Exception as exc:
         print(f"[Cloudinary Storage] Notice: {exc}")
 
-ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "webp", "gif"}
-ALLOWED_VIDEO_EXT = {"mp4", "webm", "mov"}
+ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"}
+ALLOWED_VIDEO_EXT = {"mp4", "webm", "mov", "m4v", "mkv", "avi", "3gp", "flv", "wmv"}
 MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB per upload
 
 os.makedirs(PHOTO_DIR, exist_ok=True)
@@ -335,13 +335,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
 
         del_id1 = f"enquiry_{created_at}_{phone}"
         del_id2 = f"enquiry_{item_id}" if item_id else None
-        del_id3 = f"enquiry_{phone}" if phone else None
-        del_id4 = f"enquiry_{name}_{phone}" if (name and phone) else None
 
-        if (del_id1 in deleted_set or 
-            (del_id2 and del_id2 in deleted_set) or 
-            (del_id3 and del_id3 in deleted_set) or 
-            (del_id4 and del_id4 in deleted_set)):
+        if del_id1 in deleted_set or (del_id2 and del_id2 in deleted_set):
             if item_id:
                 db.execute("DELETE FROM enquiries WHERE id = ?", (item_id,))
             continue
@@ -1721,9 +1716,7 @@ def delete_enquiry(enquiry_id):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_ids = [
             f"enquiry_{row['created_at']}_{row['phone']}",
-            f"enquiry_{row['id']}",
-            f"enquiry_{row['phone']}",
-            f"enquiry_{row['name']}_{row['phone']}"
+            f"enquiry_{row['id']}"
         ]
         for d_id in del_ids:
             if d_id and d_id != "enquiry_":
