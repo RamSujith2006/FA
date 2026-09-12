@@ -542,6 +542,59 @@ def push_videos_to_cloud(db, allow_empty=False):
 
 import re
 
+def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, embed_url=None, phone=None, name=None, created_at=None):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ids_to_add = set()
+
+    if item_id:
+        ids_to_add.add(f"{item_type}_{item_id}")
+
+    if fn:
+        ids_to_add.add(fn)
+        if "." in fn:
+            ids_to_add.add(fn.rsplit(".", 1)[0])
+
+    if cloud_url:
+        ids_to_add.add(cloud_url)
+        clean_url = cloud_url.split("?")[0]
+        ids_to_add.add(clean_url)
+        if clean_url.startswith("https://"):
+            ids_to_add.add("http://" + clean_url[8:])
+        elif clean_url.startswith("http://"):
+            ids_to_add.add("https://" + clean_url[7:])
+
+        if "fa-events/" in clean_url:
+            pub = clean_url.split("fa-events/")[-1]
+            ids_to_add.add("fa-events/" + pub)
+            ids_to_add.add("fa-events/" + pub.rsplit(".", 1)[0])
+
+    if embed_url:
+        ids_to_add.add(embed_url)
+
+    if item_type == "enquiry":
+        if created_at and phone:
+            ids_to_add.add(f"enquiry_{created_at}_{phone}")
+        if item_id:
+            ids_to_add.add(f"enquiry_{item_id}")
+
+    if item_type == "rating":
+        if created_at and name:
+            ids_to_add.add(f"rating_{created_at}_{name}")
+        if item_id:
+            ids_to_add.add(f"rating_{item_id}")
+
+    for val in ids_to_add:
+        if val and str(val).strip():
+            try:
+                db.execute(
+                    "INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES (?, ?, ?)",
+                    (item_type, str(val).strip(), now)
+                )
+            except Exception:
+                pass
+    db.commit()
+
+
 def normalize_media_identifier(ident):
     if not ident:
         return set()
@@ -550,8 +603,12 @@ def normalize_media_identifier(ident):
         return set()
 
     variations = {ident, ident.lower()}
-    
-    basename = ident.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].split("?")[0]
+
+    clean = ident.split("?")[0]
+    variations.add(clean)
+    variations.add(clean.lower())
+
+    basename = clean.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     if basename:
         variations.add(basename)
         variations.add(basename.lower())
@@ -560,11 +617,19 @@ def normalize_media_identifier(ident):
             variations.add(no_ext)
             variations.add(no_ext.lower())
 
-    no_ver = re.sub(r'/v\d+/', '/', ident)
+    if "fa-events/" in clean:
+        pub = clean.split("fa-events/")[-1]
+        variations.add("fa-events/" + pub)
+        variations.add(("fa-events/" + pub).lower())
+        pub_no_ext = pub.rsplit(".", 1)[0]
+        variations.add("fa-events/" + pub_no_ext)
+        variations.add(("fa-events/" + pub_no_ext).lower())
+
+    no_ver = re.sub(r'/v\d+/', '/', clean)
     variations.add(no_ver)
     variations.add(no_ver.lower())
 
-    no_proto = re.sub(r'^https?://', '', ident)
+    no_proto = re.sub(r'^https?://', '', clean)
     variations.add(no_proto)
     variations.add(no_proto.lower())
 
@@ -770,9 +835,17 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
-    # Rate limit: sync at most once every 3 seconds to prevent double-clicks while keeping data fresh
-    if not force and (now_ts - LAST_FIRESTORE_SYNC < 3):
-        return
+    # Optimized for Instant Admin Dashboard Load:
+    # If not forced and local SQLite has data, skip synchronous external HTTP calls.
+    if not force:
+        try:
+            p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
+            v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
+            e_cnt = db.execute("SELECT count(*) c FROM enquiries").fetchone()["c"]
+            if (p_cnt > 0 or v_cnt > 0 or e_cnt > 0) and (now_ts - LAST_FIRESTORE_SYNC < 300):
+                return
+        except Exception:
+            pass
 
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -787,20 +860,20 @@ def sync_from_firestore_to_sqlite(db, force=False):
     except Exception:
         pass
 
-    # 2. Sync enquiries & ratings (fast)
+    # 2. Sync enquiries & ratings
     sync_enquiries_from_cloud(db, deleted_set=deleted_set)
     sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
-    # 3. Only sync photos & videos from cloud if local SQLite is empty (cold start)
+    # 3. Sync photos & videos
     try:
         p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
         v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
     except Exception:
         p_cnt = v_cnt = 0
 
-    if p_cnt == 0:
+    if p_cnt == 0 or force:
         sync_photos_from_cloud(db, deleted_set=deleted_set)
-    if v_cnt == 0:
+    if v_cnt == 0 or force:
         sync_videos_from_cloud(db, deleted_set=deleted_set)
 
     LAST_FIRESTORE_SYNC = now_ts
@@ -1641,7 +1714,6 @@ def api_cloud_storage_delete():
 
     db = get_db()
     deleted = False
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if folder == "photos" or not folder:
         row = None
@@ -1653,10 +1725,10 @@ def api_cloud_storage_delete():
         if row:
             c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
             fn = row["filename"]
-            if c_url:
-                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (c_url, now))
-            if fn:
-                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (fn, now))
+            p_id = row["id"]
+
+            db.execute("DELETE FROM photos WHERE id = ?", (p_id,))
+            record_deleted_identifiers(db, "photo", p_id, fn=fn, cloud_url=c_url)
 
             path = os.path.join(PHOTO_DIR, fn) if fn else None
             if path and os.path.exists(path):
@@ -1670,8 +1742,8 @@ def api_cloud_storage_delete():
                     FIREBASE_DB.collection("photos").document(fn).delete()
                 except Exception:
                     pass
-            db.execute("DELETE FROM photos WHERE id = ?", (row["id"],))
-            db.commit()
+            push_photos_to_cloud(db, allow_empty=True)
+            push_deleted_items_to_cloud(db)
             bg_cloud_sync("delete_photo", fn=fn, c_url=c_url)
             deleted = True
 
@@ -1686,13 +1758,10 @@ def api_cloud_storage_delete():
             c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
             fn = row["filename"]
             embed = row["embed_url"] if "embed_url" in row.keys() else None
+            v_id = row["id"]
 
-            if c_url:
-                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (c_url, now))
-            if fn:
-                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (fn, now))
-            if embed:
-                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (embed, now))
+            db.execute("DELETE FROM videos WHERE id = ?", (v_id,))
+            record_deleted_identifiers(db, "video", v_id, fn=fn, cloud_url=c_url, embed_url=embed)
 
             if fn:
                 path = os.path.join(VIDEO_DIR, fn)
@@ -1701,9 +1770,16 @@ def api_cloud_storage_delete():
                         os.remove(path)
                     except Exception:
                         pass
-            db.execute("DELETE FROM videos WHERE id = ?", (row["id"],))
-            db.commit()
-            bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=row["id"])
+            delete_file_from_cloud("videos", fn, cloud_url=c_url)
+            if FIREBASE_DB:
+                try:
+                    doc_id = fn or embed or str(v_id)
+                    FIREBASE_DB.collection("videos").document(doc_id).delete()
+                except Exception:
+                    pass
+            push_videos_to_cloud(db, allow_empty=True)
+            push_deleted_items_to_cloud(db)
+            bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=v_id)
             deleted = True
 
     return jsonify({"success": deleted})
@@ -1890,7 +1966,6 @@ def delete_photo(photo_id):
     db = get_db()
     c_url = request.form.get("cloud_url", "").strip() or None
     fn = request.form.get("filename", "").strip() or None
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     row = db.execute("SELECT * FROM photos WHERE id = ?", (photo_id,)).fetchone()
     if not row and (c_url or fn):
@@ -1899,20 +1974,19 @@ def delete_photo(photo_id):
         if not row and fn:
             row = db.execute("SELECT * FROM photos WHERE filename = ?", (fn,)).fetchone()
 
+    p_id = photo_id
     if row:
         c_url = row["cloud_url"] if "cloud_url" in row.keys() and row["cloud_url"] else c_url
         fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
-        db.execute("DELETE FROM photos WHERE id = ?", (row["id"],))
+        p_id = row["id"]
 
-    db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (f"photo_{photo_id}", now))
-    if c_url:
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (c_url, now))
+    db.execute("DELETE FROM photos WHERE id = ?", (p_id,))
     if fn:
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (fn, now))
-        fn_no_ext = fn.rsplit(".", 1)[0]
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (fn_no_ext, now))
+        db.execute("DELETE FROM photos WHERE filename = ?", (fn,))
+    if c_url:
+        db.execute("DELETE FROM photos WHERE cloud_url = ?", (c_url,))
 
-    db.commit()
+    record_deleted_identifiers(db, "photo", p_id, fn=fn, cloud_url=c_url)
 
     if fn:
         path = os.path.join(PHOTO_DIR, fn)
@@ -2002,7 +2076,6 @@ def delete_video(video_id):
     c_url = request.form.get("cloud_url", "").strip() or None
     fn = request.form.get("filename", "").strip() or None
     embed = request.form.get("embed_url", "").strip() or None
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     row = db.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
     if not row and (c_url or fn or embed):
@@ -2013,24 +2086,22 @@ def delete_video(video_id):
         if not row and embed:
             row = db.execute("SELECT * FROM videos WHERE embed_url = ?", (embed,)).fetchone()
 
+    v_id = video_id
     if row:
         c_url = row["cloud_url"] if "cloud_url" in row.keys() and row["cloud_url"] else c_url
         fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
         embed = row["embed_url"] if "embed_url" in row.keys() and row["embed_url"] else embed
-        db.execute("DELETE FROM videos WHERE id = ?", (row["id"],))
+        v_id = row["id"]
 
-    db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (f"video_{video_id}", now))
-
-    if c_url:
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (c_url, now))
+    db.execute("DELETE FROM videos WHERE id = ?", (v_id,))
     if fn:
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (fn, now))
-        fn_no_ext = fn.rsplit(".", 1)[0]
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (fn_no_ext, now))
+        db.execute("DELETE FROM videos WHERE filename = ?", (fn,))
+    if c_url:
+        db.execute("DELETE FROM videos WHERE cloud_url = ?", (c_url,))
     if embed:
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (embed, now))
+        db.execute("DELETE FROM videos WHERE embed_url = ?", (embed,))
 
-    db.commit()
+    record_deleted_identifiers(db, "video", v_id, fn=fn, cloud_url=c_url, embed_url=embed)
 
     if fn:
         path = os.path.join(VIDEO_DIR, fn)
@@ -2043,7 +2114,7 @@ def delete_video(video_id):
     delete_file_from_cloud("videos", fn, cloud_url=c_url)
     if FIREBASE_DB:
         try:
-            doc_id = fn or embed or str(video_id)
+            doc_id = fn or embed or str(v_id)
             FIREBASE_DB.collection("videos").document(doc_id).delete()
         except Exception:
             pass
