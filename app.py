@@ -259,9 +259,12 @@ def push_enquiries_to_cloud(db, allow_empty=False):
 
         if HAS_MONGO and MONGO_DB is not None:
             try:
-                MONGO_DB.enquiries.delete_many({})
-                if data:
-                    MONGO_DB.enquiries.insert_many([dict(d) for d in data])
+                for d in data:
+                    item_id = d.get("id")
+                    if item_id:
+                        MONGO_DB.enquiries.replace_one({"id": item_id}, d, upsert=True)
+                    else:
+                        MONGO_DB.enquiries.replace_one({"phone": d.get("phone"), "name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -299,9 +302,12 @@ def push_ratings_to_cloud(db, allow_empty=False):
 
         if HAS_MONGO and MONGO_DB is not None:
             try:
-                MONGO_DB.ratings.delete_many({})
-                if data:
-                    MONGO_DB.ratings.insert_many([dict(d) for d in data])
+                for d in data:
+                    item_id = d.get("id")
+                    if item_id:
+                        MONGO_DB.ratings.replace_one({"id": item_id}, d, upsert=True)
+                    else:
+                        MONGO_DB.ratings.replace_one({"name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -561,9 +567,10 @@ def push_deleted_items_to_cloud(db):
 
         if HAS_MONGO and MONGO_DB is not None:
             try:
-                MONGO_DB.deleted_items.delete_many({})
-                if data:
-                    MONGO_DB.deleted_items.insert_many([dict(d) for d in data])
+                for d in data:
+                    ident = d.get("identifier")
+                    if ident:
+                        MONGO_DB.deleted_items.replace_one({"identifier": ident}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Deleted Items Push Error]: {exc}")
 
@@ -594,9 +601,13 @@ def push_photos_to_cloud(db, allow_empty=False):
 
         if HAS_MONGO and MONGO_DB is not None:
             try:
-                MONGO_DB.photos.delete_many({})
-                if data:
-                    MONGO_DB.photos.insert_many([dict(d) for d in data])
+                for d in data:
+                    item_id = d.get("id")
+                    fn = d.get("filename")
+                    if item_id:
+                        MONGO_DB.photos.replace_one({"id": item_id}, d, upsert=True)
+                    elif fn:
+                        MONGO_DB.photos.replace_one({"filename": fn}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
 
@@ -627,9 +638,16 @@ def push_videos_to_cloud(db, allow_empty=False):
 
         if HAS_MONGO and MONGO_DB is not None:
             try:
-                MONGO_DB.videos.delete_many({})
-                if data:
-                    MONGO_DB.videos.insert_many([dict(d) for d in data])
+                for d in data:
+                    item_id = d.get("id")
+                    fn = d.get("filename")
+                    cloud_url = d.get("cloud_url")
+                    if item_id:
+                        MONGO_DB.videos.replace_one({"id": item_id}, d, upsert=True)
+                    elif fn:
+                        MONGO_DB.videos.replace_one({"filename": fn}, d, upsert=True)
+                    elif cloud_url:
+                        MONGO_DB.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
 
@@ -985,20 +1003,13 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
-    # Optimized for Instant Admin Dashboard Load:
-    if not force:
-        try:
-            p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
-            v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
-            e_cnt = db.execute("SELECT count(*) c FROM enquiries").fetchone()["c"]
-            if (p_cnt > 0 or v_cnt > 0 or e_cnt > 0) and (now_ts - LAST_FIRESTORE_SYNC < 60):
-                return
-        except Exception:
-            pass
+    if not force and not HAS_MONGO:
+        if now_ts - LAST_FIRESTORE_SYNC < 3:
+            return
 
     LAST_FIRESTORE_SYNC = now_ts
 
-    # 1. Always sync deleted_items blacklist from Cloud Storage first
+    # 1. Always sync deleted_items blacklist from Cloud Storage/MongoDB first
     sync_deleted_items_from_cloud(db)
 
     # Fetch updated blacklist of deleted item identifiers
@@ -1014,16 +1025,8 @@ def sync_from_firestore_to_sqlite(db, force=False):
     sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
     # 3. Sync photos & videos
-    try:
-        p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
-        v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
-    except Exception:
-        p_cnt = v_cnt = 0
-
-    if p_cnt == 0 or force:
-        sync_photos_from_cloud(db, deleted_set=deleted_set)
-    if v_cnt == 0 or force:
-        sync_videos_from_cloud(db, deleted_set=deleted_set)
+    sync_photos_from_cloud(db, deleted_set=deleted_set)
+    sync_videos_from_cloud(db, deleted_set=deleted_set)
 
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -1572,7 +1575,7 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
 @login_required
 def admin_dashboard():
     db = get_db()
-    sync_from_firestore_to_sqlite(db)
+    sync_from_firestore_to_sqlite(db, force=True)
     unread_count = db.execute(
         "SELECT COUNT(*) c FROM enquiries WHERE is_read = 0"
     ).fetchone()["c"]
@@ -2006,6 +2009,13 @@ def delete_enquiry(enquiry_id):
         record_deleted_identifiers(db, "enquiry", enquiry_id, phone=row["phone"], name=row["name"], created_at=row["created_at"])
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.enquiries.delete_many({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
+                if row["phone"] and row["name"]:
+                    MONGO_DB.enquiries.delete_many({"phone": row["phone"], "name": row["name"]})
+            except Exception:
+                pass
         push_deleted_items_to_cloud(db)
         push_enquiries_to_cloud(db, allow_empty=True)
         if FIREBASE_DB and enquiry_id:
@@ -2297,6 +2307,13 @@ def delete_rating(rating_id):
         record_deleted_identifiers(db, "rating", rating_id, name=row["name"], created_at=row["created_at"])
         db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         db.commit()
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.ratings.delete_many({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
+                if row["name"]:
+                    MONGO_DB.ratings.delete_many({"name": row["name"], "created_at": row["created_at"]})
+            except Exception:
+                pass
         push_deleted_items_to_cloud(db)
         push_ratings_to_cloud(db, allow_empty=True)
         if FIREBASE_DB and rating_id:
