@@ -1795,8 +1795,10 @@ def delete_enquiry(enquiry_id):
 
 
 @app.route("/admin/api/cloudinary-sign", methods=["GET", "POST"])
-@login_required
 def api_cloudinary_sign():
+    if not session.get("admin_id"):
+        return jsonify({"error": "Admin login required"}), 401
+
     if not HAS_CLOUDINARY or not CLOUDINARY_API_SECRET:
         return jsonify({"error": "Cloudinary storage is not configured on server"}), 400
 

@@ -626,7 +626,7 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
             const secureUrl = resData.secure_url || resData.url;
 
             if (secureUrl) {
-              if (percentText) percentText.textContent = "100% (Saving video details...)";
+              if (percentText) percentText.textContent = "100% (Saving details...)";
               if (cloudUrlInput) cloudUrlInput.value = secureUrl;
 
               // Clear heavy binary file from input so Vercel payload stays tiny (<1KB)
@@ -635,12 +635,11 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
               // Submit form with text fields (cloud_url, caption, category)
               form.submit();
             } else {
-              if (percentText) percentText.textContent = "Uploading via server fallback...";
-              form.submit();
+              throw new Error("No URL returned from Cloud Storage.");
             }
           } catch (e) {
-            if (percentText) percentText.textContent = "Uploading via server fallback...";
-            form.submit();
+            alert(`⚠️ Upload error: ${e.message}`);
+            resetUploadUI();
           }
         } else {
           let errMessage = `Upload failed with status ${xhr.status}`;
@@ -650,24 +649,21 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
               errMessage = errData.error.message;
             }
           } catch (_) {}
-          console.warn(`Cloud Storage Direct Upload Notice: ${errMessage}. Falling back to server upload...`);
-          if (percentText) percentText.textContent = "Uploading via server fallback...";
-          form.submit();
+          alert(`⚠️ Cloud Upload Error: ${errMessage}`);
+          resetUploadUI();
         }
       };
 
       xhr.onerror = function() {
-        console.warn("Direct Cloudinary upload network error. Falling back to server upload...");
-        if (percentText) percentText.textContent = "Uploading via server fallback...";
-        form.submit();
+        alert("⚠️ Cloud Upload Network Error. Please check your internet connection and try again.");
+        resetUploadUI();
       };
 
       xhr.send(formData);
 
     } catch (err) {
-      console.warn("Direct upload error, falling back to server submit:", err);
-      if (percentText) percentText.textContent = "Uploading via server fallback...";
-      form.submit();
+      alert(`⚠️ Could not start upload: ${err.message}`);
+      resetUploadUI();
     }
   });
 }
