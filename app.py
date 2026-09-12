@@ -12,6 +12,7 @@ import sqlite3
 import smtplib
 import json
 import urllib.parse
+import threading
 from email.mime.text import MIMEText
 from datetime import datetime
 from functools import wraps
@@ -1255,8 +1256,66 @@ def upload_file_to_firebase(local_path, folder, filename):
     return cloud_url
 
 
+def bg_cloud_sync(action_type, **kwargs):
+    def _worker():
+        try:
+            with sqlite3.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                if action_type == "delete_photo":
+                    fn = kwargs.get("fn")
+                    c_url = kwargs.get("c_url")
+                    delete_file_from_cloud("photos", fn, cloud_url=c_url)
+                    if FIREBASE_DB and fn:
+                        try:
+                            FIREBASE_DB.collection("photos").document(fn).delete()
+                        except Exception:
+                            pass
+                    push_photos_to_cloud(db)
+                    push_deleted_items_to_cloud(db)
+
+                elif action_type == "delete_video":
+                    fn = kwargs.get("fn")
+                    c_url = kwargs.get("c_url")
+                    embed = kwargs.get("embed")
+                    video_id = kwargs.get("video_id")
+                    delete_file_from_cloud("videos", fn, cloud_url=c_url)
+                    if FIREBASE_DB:
+                        try:
+                            doc_id = fn or embed or str(video_id)
+                            FIREBASE_DB.collection("videos").document(doc_id).delete()
+                        except Exception:
+                            pass
+                    push_videos_to_cloud(db)
+                    push_deleted_items_to_cloud(db)
+
+                elif action_type == "delete_enquiry":
+                    enquiry_id = kwargs.get("enquiry_id")
+                    push_enquiries_to_cloud(db)
+                    push_deleted_items_to_cloud(db)
+                    if FIREBASE_DB and enquiry_id:
+                        try:
+                            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
+                        except Exception:
+                            pass
+
+                elif action_type == "delete_rating":
+                    rating_id = kwargs.get("rating_id")
+                    push_ratings_to_cloud(db)
+                    push_deleted_items_to_cloud(db)
+                    if FIREBASE_DB and rating_id:
+                        try:
+                            FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
+                        except Exception:
+                            pass
+        except Exception as exc:
+            print(f"[Background Cloud Sync Error]: {exc}")
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+
 def delete_file_from_cloud(folder, filename=None, cloud_url=None):
-    # 1. Delete from Cloudinary Cloud Storage across all resource types
+    # 1. Delete from Cloudinary Cloud Storage
     if HAS_CLOUDINARY:
         try:
             import cloudinary.uploader
@@ -1264,19 +1323,21 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
             possible_ids = set()
             if cloud_url and "fa-events/" in cloud_url:
                 after = cloud_url.split("fa-events/")[-1]
-                possible_ids.add("fa-events/" + after)
                 possible_ids.add("fa-events/" + after.rsplit(".", 1)[0])
             if filename:
-                possible_ids.add(f"fa-events/{folder}/{filename}")
-                possible_ids.add(f"fa-events/{folder}/{filename.rsplit('.', 1)[0]}")
+                fn_no_ext = filename.rsplit(".", 1)[0]
+                possible_ids.add(f"fa-events/{folder}/{fn_no_ext}")
 
-            res_types = ["image", "video", "raw"]
+            primary_rtype = "video" if folder == "videos" else "image"
+            res_types = [primary_rtype, "raw", "image" if primary_rtype == "video" else "video"]
+
             for pid in possible_ids:
                 for rtype in res_types:
                     try:
                         res = cloudinary.uploader.destroy(pid, resource_type=rtype)
                         if res.get("result") == "ok":
                             print(f"[Cloudinary Storage Delete]: {pid} ({rtype}) -> ok")
+                            break
                     except Exception:
                         pass
         except Exception as exc:
@@ -1620,8 +1681,7 @@ def api_cloud_storage_delete():
                     pass
             db.execute("DELETE FROM photos WHERE id = ?", (row["id"],))
             db.commit()
-            push_photos_to_cloud(db)
-            push_deleted_items_to_cloud(db)
+            bg_cloud_sync("delete_photo", fn=fn, c_url=c_url)
             deleted = True
 
     if (folder == "videos" or not folder) and not deleted:
@@ -1650,17 +1710,9 @@ def api_cloud_storage_delete():
                         os.remove(path)
                     except Exception:
                         pass
-            delete_file_from_cloud("videos", fn, cloud_url=c_url)
-            if FIREBASE_DB:
-                try:
-                    doc_id = fn or embed or str(row["id"])
-                    FIREBASE_DB.collection("videos").document(doc_id).delete()
-                except Exception:
-                    pass
             db.execute("DELETE FROM videos WHERE id = ?", (row["id"],))
             db.commit()
-            push_videos_to_cloud(db)
-            push_deleted_items_to_cloud(db)
+            bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=row["id"])
             deleted = True
 
     return jsonify({"success": deleted})
@@ -1731,20 +1783,12 @@ def delete_enquiry(enquiry_id):
     if row:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_id = f"enquiry_{row['created_at']}_{row['phone']}"
+        del_id_alt = f"enquiry_{row['created_at']}_{row['phone']}_{row['name']}"
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id, now))
-        if row["phone"]:
-            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (row["phone"], now))
-        if row["name"]:
-            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (row["name"], now))
+        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id_alt, now))
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
-        push_enquiries_to_cloud(db)
-        push_deleted_items_to_cloud(db)
-    if FIREBASE_DB:
-        try:
-            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
-        except Exception:
-            pass
+        bg_cloud_sync("delete_enquiry", enquiry_id=enquiry_id)
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
 
@@ -1872,16 +1916,7 @@ def delete_photo(photo_id):
             except Exception:
                 pass
 
-    delete_file_from_cloud("photos", fn, cloud_url=c_url)
-
-    if FIREBASE_DB and fn:
-        try:
-            FIREBASE_DB.collection("photos").document(fn).delete()
-        except Exception as exc:
-            app.logger.warning("Firestore photo delete failed: %s", exc)
-
-    push_photos_to_cloud(db)
-    push_deleted_items_to_cloud(db)
+    bg_cloud_sync("delete_photo", fn=fn, c_url=c_url)
     flash("Photo deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#gallery")
 
@@ -1989,18 +2024,7 @@ def delete_video(video_id):
             except Exception:
                 pass
 
-    delete_file_from_cloud("videos", fn, cloud_url=c_url)
-
-    if FIREBASE_DB:
-        try:
-            doc_id = fn or embed or str(video_id)
-            FIREBASE_DB.collection("videos").document(doc_id).delete()
-        except Exception as exc:
-            app.logger.warning("Firestore video delete failed: %s", exc)
-
-    push_videos_to_cloud(db)
-    push_deleted_items_to_cloud(db)
-
+    bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=video_id)
     flash("Video deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#videos")
 
@@ -2029,17 +2053,9 @@ def delete_rating(rating_id):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_id = f"rating_{row['created_at']}_{row['name']}"
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (del_id, now))
-        if row["name"]:
-            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (row["name"], now))
         db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         db.commit()
-        push_ratings_to_cloud(db)
-        push_deleted_items_to_cloud(db)
-    if FIREBASE_DB:
-        try:
-            FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
-        except Exception:
-            pass
+        bg_cloud_sync("delete_rating", rating_id=rating_id)
     return redirect(url_for("admin_dashboard") + "#reviews")
 
 

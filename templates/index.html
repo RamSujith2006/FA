@@ -230,10 +230,12 @@
       </div>
       <div class="photo-grid">
         {% for p in photos %}
-        <div class="gallery-item" data-category="{{ p.category or 'general' }}">
+        <figure class="gallery-item" data-category="{{ p.category or 'general' }}">
           <img src="{{ p.cloud_url or url_for('static', filename='uploads/photos/' + p.filename) }}" alt="{{ p.caption or 'FA Events decoration' }}" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1519741497674-611481863552?w=800&auto=format&fit=crop';" loading="lazy">
-          {% if p.caption %}<div class="cap">{{ p.caption }}</div>{% endif %}
-        </div>
+          {% if p.caption or p.category %}
+          <figcaption class="cap">{{ p.caption or p.category }}</figcaption>
+          {% endif %}
+        </figure>
         {% endfor %}
       </div>
       {% else %}
