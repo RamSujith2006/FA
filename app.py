@@ -267,10 +267,15 @@ def push_enquiries_to_cloud(db, allow_empty=False):
             try:
                 for d in data:
                     item_id = d.get("id")
-                    if item_id:
+                    created_at = d.get("created_at")
+                    phone = d.get("phone")
+                    name = d.get("name")
+                    if created_at and phone:
+                        mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, d, upsert=True)
+                    elif item_id:
                         mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
                     else:
-                        mongo.enquiries.replace_one({"phone": d.get("phone"), "name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
+                        mongo.enquiries.replace_one({"phone": phone, "name": name}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -311,10 +316,14 @@ def push_ratings_to_cloud(db, allow_empty=False):
             try:
                 for d in data:
                     item_id = d.get("id")
-                    if item_id:
+                    created_at = d.get("created_at")
+                    name = d.get("name")
+                    if created_at and name:
+                        mongo.ratings.replace_one({"created_at": created_at, "name": name}, d, upsert=True)
+                    elif item_id:
                         mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
                     else:
-                        mongo.ratings.replace_one({"name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
+                        mongo.ratings.replace_one({"name": name}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -419,22 +428,16 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
             continue
 
         existing = None
-        if item_id:
-            existing = db.execute("SELECT id FROM enquiries WHERE id = ?", (item_id,)).fetchone()
-        if not existing and phone and name:
+        if created_at and phone and name:
             existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND name = ? AND created_at = ?", (phone, name, created_at)).fetchone()
+        if not existing and item_id:
+            existing = db.execute("SELECT id FROM enquiries WHERE id = ?", (item_id,)).fetchone()
 
         if not existing:
-            if item_id:
-                db.execute(
-                    "INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (item_id, name, phone, email, event_type, event_date, location, message, created_at, is_read)
-                )
-            else:
-                db.execute(
-                    "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (name, phone, email, event_type, event_date, location, message, created_at, is_read)
-                )
+            db.execute(
+                "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, phone, email, event_type, event_date, location, message, created_at, is_read)
+            )
         else:
             db.execute("UPDATE enquiries SET name = ?, phone = ?, email = ?, event_type = ?, event_date = ?, location = ?, message = ?, created_at = ?, is_read = ? WHERE id = ?",
                        (name, phone, email, event_type, event_date, location, message, created_at, is_read, existing["id"]))
@@ -531,22 +534,16 @@ def sync_ratings_from_cloud(db, deleted_set=None):
             continue
 
         existing = None
-        if item_id:
-            existing = db.execute("SELECT id FROM ratings WHERE id = ?", (item_id,)).fetchone()
-        if not existing and name:
+        if created_at and name:
             existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
+        if not existing and item_id:
+            existing = db.execute("SELECT id FROM ratings WHERE id = ?", (item_id,)).fetchone()
 
         if not existing:
-            if item_id:
-                db.execute(
-                    "INSERT INTO ratings (id, name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item_id, name, stars, comment, created_at, approved)
-                )
-            else:
-                db.execute(
-                    "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
-                    (name, stars, comment, created_at, approved)
-                )
+            db.execute(
+                "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
+                (name, stars, comment, created_at, approved)
+            )
         else:
             db.execute("UPDATE ratings SET name = ?, stars = ?, comment = ?, created_at = ?, approved = ? WHERE id = ?",
                        (name, stars, comment, created_at, approved, existing["id"]))
