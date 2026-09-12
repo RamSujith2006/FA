@@ -711,8 +711,8 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
-    # Rate limit: sync at most once every 2 seconds to prevent rapid double-clicks while ensuring fresh data on refresh
-    if not force and (now_ts - LAST_FIRESTORE_SYNC < 2):
+    # Rate limit: sync at most once every 3 seconds to prevent double-clicks while keeping data fresh
+    if not force and (now_ts - LAST_FIRESTORE_SYNC < 3):
         return
 
     LAST_FIRESTORE_SYNC = now_ts
@@ -728,126 +728,23 @@ def sync_from_firestore_to_sqlite(db, force=False):
     except Exception:
         pass
 
-    # 2. Sync enquiries & ratings
+    # 2. Sync enquiries & ratings (fast)
     sync_enquiries_from_cloud(db, deleted_set=deleted_set)
     sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
-    # 3. Sync photos & videos from Cloud Storage raw JSON
-    sync_photos_from_cloud(db, deleted_set=deleted_set)
-    sync_videos_from_cloud(db, deleted_set=deleted_set)
+    # 3. Only sync photos & videos if local DB is empty
+    try:
+        p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
+        v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
+    except Exception:
+        p_cnt = v_cnt = 0
+
+    if p_cnt == 0:
+        sync_photos_from_cloud(db, deleted_set=deleted_set)
+    if v_cnt == 0:
+        sync_videos_from_cloud(db, deleted_set=deleted_set)
 
     LAST_FIRESTORE_SYNC = now_ts
-
-    # 1. Sync Photos & Videos directly from Cloudinary API
-    if HAS_CLOUDINARY:
-        try:
-            import cloudinary.api
-            # Sync Photos
-            res_p = cloudinary.api.resources(type="upload", prefix="fa-events/photos", max_results=100)
-            for r in res_p.get("resources", []):
-                cloud_url = r.get("secure_url") or r.get("url")
-                fn = r.get("public_id", "").rsplit("/", 1)[-1]
-                pid = r.get("public_id", "")
-                created_at = r.get("created_at", "").replace("T", " ").replace("Z", "") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                if is_item_deleted(deleted_set, fn=fn, cloud_url=cloud_url, public_id=pid):
-                    continue
-
-                ex = db.execute("SELECT id FROM photos WHERE cloud_url = ? OR filename = ?", (cloud_url, fn)).fetchone()
-                if not ex:
-                    db.execute(
-                        "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
-                        (fn, cloud_url, "Decoration Work", "Wedding Stage", created_at)
-                    )
-
-            # Sync Videos
-            res_v = cloudinary.api.resources(type="upload", resource_type="video", prefix="fa-events/videos", max_results=100)
-            for r in res_v.get("resources", []):
-                cloud_url = r.get("secure_url") or r.get("url")
-                fn = r.get("public_id", "").rsplit("/", 1)[-1]
-                pid = r.get("public_id", "")
-                created_at = r.get("created_at", "").replace("T", " ").replace("Z", "") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                if is_item_deleted(deleted_set, fn=fn, cloud_url=cloud_url, public_id=pid):
-                    continue
-
-                ex = db.execute("SELECT id FROM videos WHERE cloud_url = ? OR filename = ?", (cloud_url, fn)).fetchone()
-                if not ex:
-                    db.execute(
-                        "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        (fn, cloud_url, "", "Event Video", "Wedding", created_at)
-                    )
-
-            db.commit()
-        except Exception as exc:
-            print(f"[Cloudinary Auto Sync Notice]: {exc}")
-
-    # 2. Sync from Firebase Firestore (safely wrapped so 403 errors never block)
-    if FIREBASE_DB:
-        try:
-            # 1. Sync Photos
-            p_docs = FIREBASE_DB.collection("photos").stream()
-            for doc in p_docs:
-                d = doc.to_dict()
-                if d:
-                    fname = d.get("filename") or doc.id
-                    cloud_url = d.get("cloud_url", "")
-                    caption = d.get("caption", "")
-                    category = d.get("category", "")
-                    created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                    if is_item_deleted(deleted_set, fn=fname, cloud_url=cloud_url):
-                        continue
-
-                    existing = db.execute("SELECT id FROM photos WHERE filename = ? OR (cloud_url IS NOT NULL AND cloud_url != '' AND cloud_url = ?)", (fname, cloud_url)).fetchone()
-                    if not existing:
-                        db.execute(
-                            "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
-                            (fname, cloud_url, caption, category, created_at)
-                        )
-                    else:
-                        db.execute(
-                            "UPDATE photos SET cloud_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
-                            (cloud_url, caption, category, created_at, existing["id"])
-                        )
-
-            # 2. Sync Videos
-            v_docs = FIREBASE_DB.collection("videos").stream()
-            for doc in v_docs:
-                d = doc.to_dict()
-                if d:
-                    fname = d.get("filename") or ""
-                    cloud_url = d.get("cloud_url", "")
-                    embed_url = d.get("embed_url", "")
-                    caption = d.get("caption", "")
-                    category = d.get("category", "")
-                    created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                    if is_item_deleted(deleted_set, fn=fname, cloud_url=cloud_url, embed_url=embed_url):
-                        continue
-
-                    existing = None
-                    if cloud_url:
-                        existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (cloud_url,)).fetchone()
-                    elif fname:
-                        existing = db.execute("SELECT id FROM videos WHERE filename = ?", (fname,)).fetchone()
-                    elif embed_url:
-                        existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (embed_url,)).fetchone()
-
-                    if not existing:
-                        db.execute(
-                            "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                            (fname, cloud_url, embed_url, caption, category, created_at)
-                        )
-                    else:
-                        db.execute(
-                            "UPDATE videos SET filename = ?, cloud_url = ?, embed_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
-                            (fname, cloud_url, embed_url, caption, category, created_at, existing["id"])
-                        )
-
-            db.commit()
-        except Exception as exc:
-            print(f"[Firestore Auto Sync Notice]: {exc}")
 
 
 
