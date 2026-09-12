@@ -262,14 +262,15 @@ def push_enquiries_to_cloud(db, allow_empty=False):
             print("[Push Enquiries Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
                 for d in data:
                     item_id = d.get("id")
                     if item_id:
-                        MONGO_DB.enquiries.replace_one({"id": item_id}, d, upsert=True)
+                        mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
                     else:
-                        MONGO_DB.enquiries.replace_one({"phone": d.get("phone"), "name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
+                        mongo.enquiries.replace_one({"phone": d.get("phone"), "name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -305,14 +306,15 @@ def push_ratings_to_cloud(db, allow_empty=False):
             print("[Push Ratings Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
                 for d in data:
                     item_id = d.get("id")
                     if item_id:
-                        MONGO_DB.ratings.replace_one({"id": item_id}, d, upsert=True)
+                        mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
                     else:
-                        MONGO_DB.ratings.replace_one({"name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
+                        mongo.ratings.replace_one({"name": d.get("name"), "created_at": d.get("created_at")}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -351,9 +353,10 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
 
     enquiries_list = []
 
-    if HAS_MONGO and MONGO_DB is not None:
+    mongo = get_mongo_db()
+    if mongo is not None:
         try:
-            m_docs = list(MONGO_DB.enquiries.find({}, {"_id": 0}))
+            m_docs = list(mongo.enquiries.find({}, {"_id": 0}))
             if m_docs:
                 enquiries_list = m_docs
         except Exception as exc:
@@ -464,9 +467,10 @@ def sync_ratings_from_cloud(db, deleted_set=None):
 
     ratings_list = []
 
-    if HAS_MONGO and MONGO_DB is not None:
+    mongo = get_mongo_db()
+    if mongo is not None:
         try:
-            m_docs = list(MONGO_DB.ratings.find({}, {"_id": 0}))
+            m_docs = list(mongo.ratings.find({}, {"_id": 0}))
             if m_docs:
                 ratings_list = m_docs
         except Exception as exc:
@@ -569,12 +573,13 @@ def push_deleted_items_to_cloud(db):
         rows = db.execute("SELECT * FROM deleted_items ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
 
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
                 for d in data:
                     ident = d.get("identifier")
                     if ident:
-                        MONGO_DB.deleted_items.replace_one({"identifier": ident}, d, upsert=True)
+                        mongo.deleted_items.replace_one({"identifier": ident}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Deleted Items Push Error]: {exc}")
 
@@ -603,15 +608,16 @@ def push_photos_to_cloud(db, allow_empty=False):
             print("[Push Photos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
                 for d in data:
                     item_id = d.get("id")
                     fn = d.get("filename")
                     if item_id:
-                        MONGO_DB.photos.replace_one({"id": item_id}, d, upsert=True)
+                        mongo.photos.replace_one({"id": item_id}, d, upsert=True)
                     elif fn:
-                        MONGO_DB.photos.replace_one({"filename": fn}, d, upsert=True)
+                        mongo.photos.replace_one({"filename": fn}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
 
@@ -640,18 +646,19 @@ def push_videos_to_cloud(db, allow_empty=False):
             print("[Push Videos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
                 for d in data:
                     item_id = d.get("id")
                     fn = d.get("filename")
                     cloud_url = d.get("cloud_url")
                     if item_id:
-                        MONGO_DB.videos.replace_one({"id": item_id}, d, upsert=True)
+                        mongo.videos.replace_one({"id": item_id}, d, upsert=True)
                     elif fn:
-                        MONGO_DB.videos.replace_one({"filename": fn}, d, upsert=True)
+                        mongo.videos.replace_one({"filename": fn}, d, upsert=True)
                     elif cloud_url:
-                        MONGO_DB.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
+                        mongo.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
 
@@ -801,9 +808,10 @@ def is_item_deleted(deleted_set, fn=None, cloud_url=None, embed_url=None, public
 def sync_deleted_items_from_cloud(db):
     deleted_list = []
 
-    if HAS_MONGO and MONGO_DB is not None:
+    mongo = get_mongo_db()
+    if mongo is not None:
         try:
-            m_docs = list(MONGO_DB.deleted_items.find({}, {"_id": 0}))
+            m_docs = list(mongo.deleted_items.find({}, {"_id": 0}))
             if m_docs:
                 deleted_list = m_docs
         except Exception as exc:
@@ -855,9 +863,10 @@ def sync_photos_from_cloud(db, deleted_set=None):
 
     photos_list = []
 
-    if HAS_MONGO and MONGO_DB is not None:
+    mongo = get_mongo_db()
+    if mongo is not None:
         try:
-            m_docs = list(MONGO_DB.photos.find({}, {"_id": 0}))
+            m_docs = list(mongo.photos.find({}, {"_id": 0}))
             if m_docs:
                 photos_list = m_docs
         except Exception as exc:
@@ -930,9 +939,10 @@ def sync_videos_from_cloud(db, deleted_set=None):
 
     videos_list = []
 
-    if HAS_MONGO and MONGO_DB is not None:
+    mongo = get_mongo_db()
+    if mongo is not None:
         try:
-            m_docs = list(MONGO_DB.videos.find({}, {"_id": 0}))
+            m_docs = list(mongo.videos.find({}, {"_id": 0}))
             if m_docs:
                 videos_list = m_docs
         except Exception as exc:
@@ -1007,7 +1017,8 @@ def sync_from_firestore_to_sqlite(db, force=False):
 
     now_ts = datetime.now().timestamp()
 
-    if not force and not HAS_MONGO:
+    mongo = get_mongo_db()
+    if not force and mongo is None:
         if now_ts - LAST_FIRESTORE_SYNC < 3:
             return
 
