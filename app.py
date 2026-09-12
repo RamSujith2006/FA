@@ -184,14 +184,400 @@ def init_firebase():
 
 LAST_FIRESTORE_SYNC = 0
 
+def push_enquiries_to_cloud(db):
+    try:
+        rows = db.execute("SELECT * FROM enquiries ORDER BY id ASC").fetchall()
+        data = [dict(r) for r in rows]
+
+        if HAS_CLOUDINARY:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.upload(
+                    json.dumps(data).encode("utf-8"),
+                    folder="fa-events/data",
+                    public_id="enquiries.json",
+                    resource_type="raw",
+                    overwrite=True,
+                    invalidate=True
+                )
+            except Exception as exc:
+                print(f"[Cloudinary Enquiries Push Error]: {exc}")
+
+        if FIREBASE_DB:
+            for item in data:
+                try:
+                    FIREBASE_DB.collection("enquiries").document(str(item["id"])).set(item)
+                except Exception:
+                    pass
+    except Exception as exc:
+        print(f"[Push Enquiries Error]: {exc}")
+
+
+def push_ratings_to_cloud(db):
+    try:
+        rows = db.execute("SELECT * FROM ratings ORDER BY id ASC").fetchall()
+        data = [dict(r) for r in rows]
+
+        if HAS_CLOUDINARY:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.upload(
+                    json.dumps(data).encode("utf-8"),
+                    folder="fa-events/data",
+                    public_id="ratings.json",
+                    resource_type="raw",
+                    overwrite=True,
+                    invalidate=True
+                )
+            except Exception as exc:
+                print(f"[Cloudinary Ratings Push Error]: {exc}")
+
+        if FIREBASE_DB:
+            for item in data:
+                try:
+                    FIREBASE_DB.collection("ratings").document(str(item["id"])).set(item)
+                except Exception:
+                    pass
+    except Exception as exc:
+        print(f"[Push Ratings Error]: {exc}")
+
+
+def sync_enquiries_from_cloud(db):
+    deleted_set = set()
+    try:
+        rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'enquiry'").fetchall()
+        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+    except Exception:
+        pass
+
+    enquiries_list = []
+
+    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+        try:
+            import urllib.request
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/enquiries.json"
+            req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    enquiries_list = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+
+    if not enquiries_list and FIREBASE_DB:
+        try:
+            e_docs = FIREBASE_DB.collection("enquiries").stream()
+            for doc in e_docs:
+                d = doc.to_dict()
+                if d:
+                    enquiries_list.append(d)
+        except Exception:
+            pass
+
+    for d in enquiries_list:
+        if not d:
+            continue
+        name = d.get("name", "")
+        phone = d.get("phone", "")
+        email = d.get("email", "")
+        event_type = d.get("event_type", "")
+        event_date = d.get("event_date", "")
+        location = d.get("location", "")
+        message = d.get("message", "")
+        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        is_read = 1 if d.get("is_read") else 0
+
+        del_id = f"enquiry_{created_at}_{phone}"
+        if del_id in deleted_set or phone in deleted_set:
+            continue
+
+        existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at)).fetchone()
+        if not existing:
+            db.execute(
+                "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, phone, email, event_type, event_date, location, message, created_at, is_read)
+            )
+        else:
+            db.execute("UPDATE enquiries SET is_read = ? WHERE id = ?", (is_read, existing["id"]))
+    db.commit()
+
+
+def sync_ratings_from_cloud(db):
+    deleted_set = set()
+    try:
+        rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'rating'").fetchall()
+        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+    except Exception:
+        pass
+
+    ratings_list = []
+
+    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+        try:
+            import urllib.request
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/ratings.json"
+            req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    ratings_list = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+
+    if not ratings_list and FIREBASE_DB:
+        try:
+            r_docs = FIREBASE_DB.collection("ratings").stream()
+            for doc in r_docs:
+                d = doc.to_dict()
+                if d:
+                    ratings_list.append(d)
+        except Exception:
+            pass
+
+    for d in ratings_list:
+        if not d:
+            continue
+        name = d.get("name", "")
+        stars = d.get("stars", 5)
+        comment = d.get("comment", "")
+        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        approved = 1 if d.get("approved") else 0
+
+        del_id = f"rating_{created_at}_{name}"
+        if del_id in deleted_set or name in deleted_set:
+            continue
+
+        existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
+        if not existing:
+            db.execute(
+                "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
+                (name, stars, comment, created_at, approved)
+            )
+        else:
+            db.execute("UPDATE ratings SET approved = ? WHERE id = ?", (approved, existing["id"]))
+    db.commit()
+
+
+def push_deleted_items_to_cloud(db):
+    try:
+        rows = db.execute("SELECT * FROM deleted_items ORDER BY id ASC").fetchall()
+        data = [dict(r) for r in rows]
+
+        if HAS_CLOUDINARY:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.upload(
+                    json.dumps(data).encode("utf-8"),
+                    folder="fa-events/data",
+                    public_id="deleted_items.json",
+                    resource_type="raw",
+                    overwrite=True,
+                    invalidate=True
+                )
+            except Exception as exc:
+                print(f"[Cloudinary Deleted Items Push Error]: {exc}")
+    except Exception as exc:
+        print(f"[Push Deleted Items Error]: {exc}")
+
+
+def push_photos_to_cloud(db):
+    try:
+        rows = db.execute("SELECT * FROM photos ORDER BY id ASC").fetchall()
+        data = [dict(r) for r in rows]
+
+        if HAS_CLOUDINARY:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.upload(
+                    json.dumps(data).encode("utf-8"),
+                    folder="fa-events/data",
+                    public_id="photos.json",
+                    resource_type="raw",
+                    overwrite=True,
+                    invalidate=True
+                )
+            except Exception as exc:
+                print(f"[Cloudinary Photos Push Error]: {exc}")
+    except Exception as exc:
+        print(f"[Push Photos Error]: {exc}")
+
+
+def push_videos_to_cloud(db):
+    try:
+        rows = db.execute("SELECT * FROM videos ORDER BY id ASC").fetchall()
+        data = [dict(r) for r in rows]
+
+        if HAS_CLOUDINARY:
+            try:
+                import cloudinary.uploader
+                cloudinary.uploader.upload(
+                    json.dumps(data).encode("utf-8"),
+                    folder="fa-events/data",
+                    public_id="videos.json",
+                    resource_type="raw",
+                    overwrite=True,
+                    invalidate=True
+                )
+            except Exception as exc:
+                print(f"[Cloudinary Videos Push Error]: {exc}")
+    except Exception as exc:
+        print(f"[Push Videos Error]: {exc}")
+
+
+def sync_deleted_items_from_cloud(db):
+    deleted_list = []
+    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+        try:
+            import urllib.request
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/deleted_items.json"
+            req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    deleted_list = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+
+    for d in deleted_list:
+        if not d or not d.get("identifier"):
+            continue
+        item_type = d.get("item_type", "unknown")
+        identifier = d.get("identifier")
+        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            db.execute(
+                "INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES (?, ?, ?)",
+                (item_type, identifier, created_at)
+            )
+        except Exception:
+            pass
+    db.commit()
+
+
+def sync_photos_from_cloud(db, deleted_set=None):
+    if deleted_set is None:
+        deleted_set = set()
+        try:
+            rows_del = db.execute("SELECT identifier FROM deleted_items").fetchall()
+            deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+        except Exception:
+            pass
+
+    photos_list = []
+    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+        try:
+            import urllib.request
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/photos.json"
+            req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    photos_list = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+
+    for d in photos_list:
+        if not d:
+            continue
+        fn = d.get("filename", "")
+        cloud_url = d.get("cloud_url", "")
+        caption = d.get("caption", "")
+        category = d.get("category", "")
+        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if (fn and fn in deleted_set) or (cloud_url and cloud_url in deleted_set):
+            continue
+
+        existing = db.execute("SELECT id FROM photos WHERE filename = ? OR (cloud_url IS NOT NULL AND cloud_url != '' AND cloud_url = ?)", (fn, cloud_url)).fetchone()
+        if not existing:
+            db.execute(
+                "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
+                (fn, cloud_url, caption, category, created_at)
+            )
+        else:
+            db.execute(
+                "UPDATE photos SET cloud_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                (cloud_url, caption, category, created_at, existing["id"])
+            )
+    db.commit()
+
+
+def sync_videos_from_cloud(db, deleted_set=None):
+    if deleted_set is None:
+        deleted_set = set()
+        try:
+            rows_del = db.execute("SELECT identifier FROM deleted_items").fetchall()
+            deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+        except Exception:
+            pass
+
+    videos_list = []
+    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+        try:
+            import urllib.request
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/videos.json"
+            req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    videos_list = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+
+    for d in videos_list:
+        if not d:
+            continue
+        fn = d.get("filename", "")
+        cloud_url = d.get("cloud_url", "")
+        embed_url = d.get("embed_url", "")
+        caption = d.get("caption", "")
+        category = d.get("category", "")
+        created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if (fn and fn in deleted_set) or (cloud_url and cloud_url in deleted_set) or (embed_url and embed_url in deleted_set):
+            continue
+
+        existing = None
+        if cloud_url:
+            existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (cloud_url,)).fetchone()
+        elif fn:
+            existing = db.execute("SELECT id FROM videos WHERE filename = ?", (fn,)).fetchone()
+        elif embed_url:
+            existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (embed_url,)).fetchone()
+
+        if not existing:
+            db.execute(
+                "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (fn, cloud_url, embed_url, caption, category, created_at)
+            )
+        else:
+            db.execute(
+                "UPDATE videos SET filename = ?, cloud_url = ?, embed_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                (fn, cloud_url, embed_url, caption, category, created_at, existing["id"])
+            )
+    db.commit()
+
+
 def sync_from_firestore_to_sqlite(db, force=False):
     global LAST_FIRESTORE_SYNC
-    if not FIREBASE_DB:
-        return
 
     now_ts = datetime.now().timestamp()
 
-    # Check if local SQLite DB is already populated
+    # 1. Always sync deleted_items blacklist from Cloud Storage first
+    sync_deleted_items_from_cloud(db)
+
+    # 2. Always sync enquiries & ratings
+    sync_enquiries_from_cloud(db)
+    sync_ratings_from_cloud(db)
+
+    # 3. Always sync photos & videos from Cloud Storage raw JSON
+    sync_photos_from_cloud(db)
+    sync_videos_from_cloud(db)
+
+    # Fetch blacklist of deleted item identifiers
+    deleted_set = set()
+    try:
+        rows_del = db.execute("SELECT identifier FROM deleted_items").fetchall()
+        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+    except Exception:
+        pass
+
+    # Check if local SQLite DB is already populated for media
     try:
         p_count = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
         v_count = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
@@ -199,115 +585,124 @@ def sync_from_firestore_to_sqlite(db, force=False):
     except Exception:
         has_data = False
 
-    # If database is populated, sync at most once every 5 minutes (300s) unless forced
-    min_interval = 300 if has_data else 2
+    # If database is populated, sync media API at most once every 5 minutes (300s) unless forced
+    min_interval = 300 if has_data else 1
     if not force and (now_ts - LAST_FIRESTORE_SYNC < min_interval):
         return
 
-    try:
-        LAST_FIRESTORE_SYNC = now_ts
+    LAST_FIRESTORE_SYNC = now_ts
 
-        # 1. Sync Photos
-        p_docs = FIREBASE_DB.collection("photos").stream()
-        for doc in p_docs:
-            d = doc.to_dict()
-            if d:
-                fname = d.get("filename") or doc.id
-                cloud_url = d.get("cloud_url", "")
-                caption = d.get("caption", "")
-                category = d.get("category", "")
-                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 1. Sync Photos & Videos directly from Cloudinary API
+    if HAS_CLOUDINARY:
+        try:
+            import cloudinary.api
+            # Sync Photos
+            res_p = cloudinary.api.resources(type="upload", prefix="fa-events/photos", max_results=100)
+            for r in res_p.get("resources", []):
+                cloud_url = r.get("secure_url") or r.get("url")
+                fn = r.get("public_id", "").rsplit("/", 1)[-1]
+                pid = r.get("public_id", "")
+                created_at = r.get("created_at", "").replace("T", " ").replace("Z", "") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                existing = db.execute("SELECT id FROM photos WHERE filename = ? OR (cloud_url IS NOT NULL AND cloud_url != '' AND cloud_url = ?)", (fname, cloud_url)).fetchone()
-                if not existing:
+                if cloud_url in deleted_set or fn in deleted_set or pid in deleted_set:
+                    continue
+
+                ex = db.execute("SELECT id FROM photos WHERE cloud_url = ? OR filename = ?", (cloud_url, fn)).fetchone()
+                if not ex:
                     db.execute(
                         "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
-                        (fname, cloud_url, caption, category, created_at)
-                    )
-                else:
-                    db.execute(
-                        "UPDATE photos SET cloud_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
-                        (cloud_url, caption, category, created_at, existing["id"])
+                        (fn, cloud_url, "Decoration Work", "Wedding Stage", created_at)
                     )
 
-        # 2. Sync Videos
-        v_docs = FIREBASE_DB.collection("videos").stream()
-        for doc in v_docs:
-            d = doc.to_dict()
-            if d:
-                fname = d.get("filename") or ""
-                cloud_url = d.get("cloud_url", "")
-                embed_url = d.get("embed_url", "")
-                caption = d.get("caption", "")
-                category = d.get("category", "")
-                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Sync Videos
+            res_v = cloudinary.api.resources(type="upload", resource_type="video", prefix="fa-events/videos", max_results=100)
+            for r in res_v.get("resources", []):
+                cloud_url = r.get("secure_url") or r.get("url")
+                fn = r.get("public_id", "").rsplit("/", 1)[-1]
+                pid = r.get("public_id", "")
+                created_at = r.get("created_at", "").replace("T", " ").replace("Z", "") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                existing = None
-                if cloud_url:
-                    existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (cloud_url,)).fetchone()
-                elif fname:
-                    existing = db.execute("SELECT id FROM videos WHERE filename = ?", (fname,)).fetchone()
-                elif embed_url:
-                    existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (embed_url,)).fetchone()
+                if cloud_url in deleted_set or fn in deleted_set or pid in deleted_set:
+                    continue
 
-                if not existing:
+                ex = db.execute("SELECT id FROM videos WHERE cloud_url = ? OR filename = ?", (cloud_url, fn)).fetchone()
+                if not ex:
                     db.execute(
                         "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        (fname, cloud_url, embed_url, caption, category, created_at)
-                    )
-                else:
-                    db.execute(
-                        "UPDATE videos SET filename = ?, cloud_url = ?, embed_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
-                        (fname, cloud_url, embed_url, caption, category, created_at, existing["id"])
+                        (fn, cloud_url, "", "Event Video", "Wedding", created_at)
                     )
 
-        # 3. Sync Enquiries
-        e_docs = FIREBASE_DB.collection("enquiries").stream()
-        for doc in e_docs:
-            d = doc.to_dict()
-            if d:
-                name = d.get("name", "")
-                phone = d.get("phone", "")
-                email = d.get("email", "")
-                event_type = d.get("event_type", "")
-                event_date = d.get("event_date", "")
-                location = d.get("location", "")
-                message = d.get("message", "")
-                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                is_read = 1 if d.get("is_read") else 0
+            db.commit()
+        except Exception as exc:
+            print(f"[Cloudinary Auto Sync Notice]: {exc}")
 
-                existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at)).fetchone()
-                if not existing:
-                    db.execute(
-                        "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (name, phone, email, event_type, event_date, location, message, created_at, is_read)
-                    )
-                else:
-                    db.execute("UPDATE enquiries SET is_read = ? WHERE id = ?", (is_read, existing["id"]))
+    # 2. Sync from Firebase Firestore (safely wrapped so 403 errors never block)
+    if FIREBASE_DB:
+        try:
+            # 1. Sync Photos
+            p_docs = FIREBASE_DB.collection("photos").stream()
+            for doc in p_docs:
+                d = doc.to_dict()
+                if d:
+                    fname = d.get("filename") or doc.id
+                    cloud_url = d.get("cloud_url", "")
+                    caption = d.get("caption", "")
+                    category = d.get("category", "")
+                    created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 4. Sync Ratings
-        r_docs = FIREBASE_DB.collection("ratings").stream()
-        for doc in r_docs:
-            d = doc.to_dict()
-            if d:
-                name = d.get("name", "")
-                stars = d.get("stars", 5)
-                comment = d.get("comment", "")
-                created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                approved = 1 if d.get("approved") else 0
+                    if fname in deleted_set or cloud_url in deleted_set:
+                        continue
 
-                existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
-                if not existing:
-                    db.execute(
-                        "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
-                        (name, stars, comment, created_at, approved)
-                    )
-                else:
-                    db.execute("UPDATE ratings SET approved = ? WHERE id = ?", (approved, existing["id"]))
+                    existing = db.execute("SELECT id FROM photos WHERE filename = ? OR (cloud_url IS NOT NULL AND cloud_url != '' AND cloud_url = ?)", (fname, cloud_url)).fetchone()
+                    if not existing:
+                        db.execute(
+                            "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
+                            (fname, cloud_url, caption, category, created_at)
+                        )
+                    else:
+                        db.execute(
+                            "UPDATE photos SET cloud_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                            (cloud_url, caption, category, created_at, existing["id"])
+                        )
 
-        db.commit()
-    except Exception as exc:
-        print(f"[Firestore Auto Sync Notice]: {exc}")
+            # 2. Sync Videos
+            v_docs = FIREBASE_DB.collection("videos").stream()
+            for doc in v_docs:
+                d = doc.to_dict()
+                if d:
+                    fname = d.get("filename") or ""
+                    cloud_url = d.get("cloud_url", "")
+                    embed_url = d.get("embed_url", "")
+                    caption = d.get("caption", "")
+                    category = d.get("category", "")
+                    created_at = d.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    if fname in deleted_set or cloud_url in deleted_set or embed_url in deleted_set:
+                        continue
+
+                    existing = None
+                    if cloud_url:
+                        existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (cloud_url,)).fetchone()
+                    elif fname:
+                        existing = db.execute("SELECT id FROM videos WHERE filename = ?", (fname,)).fetchone()
+                    elif embed_url:
+                        existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (embed_url,)).fetchone()
+
+                    if not existing:
+                        db.execute(
+                            "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                            (fname, cloud_url, embed_url, caption, category, created_at)
+                        )
+                    else:
+                        db.execute(
+                            "UPDATE videos SET filename = ?, cloud_url = ?, embed_url = ?, caption = ?, category = ?, created_at = ? WHERE id = ?",
+                            (fname, cloud_url, embed_url, caption, category, created_at, existing["id"])
+                        )
+
+            db.commit()
+        except Exception as exc:
+            print(f"[Firestore Auto Sync Notice]: {exc}")
+
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +774,13 @@ def init_db():
             comment TEXT,
             created_at TEXT NOT NULL,
             approved INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS deleted_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_type TEXT NOT NULL,
+            identifier TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL
         );
         """
     )
@@ -557,6 +959,8 @@ def submit_enquiry():
         db.commit()
         enquiry_id = cursor.lastrowid
 
+        push_enquiries_to_cloud(db)
+
         if FIREBASE_DB:
             try:
                 FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({
@@ -624,6 +1028,8 @@ def submit_rating():
         )
         db.commit()
         rating_id = cursor.lastrowid
+
+        push_ratings_to_cloud(db)
 
         if FIREBASE_DB:
             try:
@@ -740,7 +1146,34 @@ def upload_file_to_firebase(local_path, folder, filename):
     return cloud_url
 
 
-def delete_file_from_firebase(folder, filename):
+def delete_file_from_cloud(folder, filename=None, cloud_url=None):
+    # 1. Delete from Cloudinary Cloud Storage across all resource types
+    if HAS_CLOUDINARY:
+        try:
+            import cloudinary.uploader
+            
+            possible_ids = set()
+            if cloud_url and "fa-events/" in cloud_url:
+                after = cloud_url.split("fa-events/")[-1]
+                possible_ids.add("fa-events/" + after)
+                possible_ids.add("fa-events/" + after.rsplit(".", 1)[0])
+            if filename:
+                possible_ids.add(f"fa-events/{folder}/{filename}")
+                possible_ids.add(f"fa-events/{folder}/{filename.rsplit('.', 1)[0]}")
+
+            res_types = ["image", "video", "raw"]
+            for pid in possible_ids:
+                for rtype in res_types:
+                    try:
+                        res = cloudinary.uploader.destroy(pid, resource_type=rtype)
+                        if res.get("result") == "ok":
+                            print(f"[Cloudinary Storage Delete]: {pid} ({rtype}) -> ok")
+                    except Exception:
+                        pass
+        except Exception as exc:
+            app.logger.warning("Cloudinary delete warning: %s", exc)
+
+    # 2. Delete from Firebase Storage
     if FIREBASE_BUCKET and filename:
         try:
             blob_name = f"{folder}/{filename}"
@@ -1047,6 +1480,7 @@ def api_cloud_storage_delete():
 
     db = get_db()
     deleted = False
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if folder == "photos" or not folder:
         row = None
@@ -1056,20 +1490,29 @@ def api_cloud_storage_delete():
             row = db.execute("SELECT * FROM photos WHERE filename = ?", (filename,)).fetchone()
 
         if row:
-            path = os.path.join(PHOTO_DIR, row["filename"])
-            if os.path.exists(path):
+            c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
+            fn = row["filename"]
+            if c_url:
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (c_url, now))
+            if fn:
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (fn, now))
+
+            path = os.path.join(PHOTO_DIR, fn) if fn else None
+            if path and os.path.exists(path):
                 try:
                     os.remove(path)
                 except Exception:
                     pass
-            delete_file_from_firebase("photos", row["filename"])
-            if FIREBASE_DB:
+            delete_file_from_cloud("photos", fn, cloud_url=c_url)
+            if FIREBASE_DB and fn:
                 try:
-                    FIREBASE_DB.collection("photos").document(row["filename"]).delete()
+                    FIREBASE_DB.collection("photos").document(fn).delete()
                 except Exception:
                     pass
             db.execute("DELETE FROM photos WHERE id = ?", (row["id"],))
             db.commit()
+            push_photos_to_cloud(db)
+            push_deleted_items_to_cloud(db)
             deleted = True
 
     if (folder == "videos" or not folder) and not deleted:
@@ -1080,21 +1523,35 @@ def api_cloud_storage_delete():
             row = db.execute("SELECT * FROM videos WHERE filename = ?", (filename,)).fetchone()
 
         if row:
-            if row["filename"]:
-                path = os.path.join(VIDEO_DIR, row["filename"])
+            c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
+            fn = row["filename"]
+            embed = row["embed_url"] if "embed_url" in row.keys() else None
+
+            if c_url:
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (c_url, now))
+            if fn:
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (fn, now))
+            if embed:
+                db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (embed, now))
+
+            if fn:
+                path = os.path.join(VIDEO_DIR, fn)
                 if os.path.exists(path):
                     try:
                         os.remove(path)
                     except Exception:
                         pass
-                delete_file_from_firebase("videos", row["filename"])
-                if FIREBASE_DB:
-                    try:
-                        FIREBASE_DB.collection("videos").document(row["filename"]).delete()
-                    except Exception:
-                        pass
+            delete_file_from_cloud("videos", fn, cloud_url=c_url)
+            if FIREBASE_DB:
+                try:
+                    doc_id = fn or embed or str(row["id"])
+                    FIREBASE_DB.collection("videos").document(doc_id).delete()
+                except Exception:
+                    pass
             db.execute("DELETE FROM videos WHERE id = ?", (row["id"],))
             db.commit()
+            push_videos_to_cloud(db)
+            push_deleted_items_to_cloud(db)
             deleted = True
 
     return jsonify({"success": deleted})
@@ -1132,6 +1589,8 @@ def api_cloud_storage_sync():
                     synced_videos += 1
 
     db.commit()
+    push_photos_to_cloud(db)
+    push_videos_to_cloud(db)
     return jsonify({
         "success": True,
         "synced_photos": synced_photos,
@@ -1146,6 +1605,7 @@ def mark_enquiry_read(enquiry_id):
     db = get_db()
     db.execute("UPDATE enquiries SET is_read = 1 WHERE id = ?", (enquiry_id,))
     db.commit()
+    push_enquiries_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({"is_read": True}, merge=True)
@@ -1158,8 +1618,16 @@ def mark_enquiry_read(enquiry_id):
 @login_required
 def delete_enquiry(enquiry_id):
     db = get_db()
-    db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
-    db.commit()
+    row = db.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
+    if row:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        del_id = f"enquiry_{row['created_at']}_{row['phone']}"
+        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id, now))
+        if row["phone"]:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (row["phone"], now))
+        db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
+        db.commit()
+        push_enquiries_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
@@ -1237,6 +1705,7 @@ def upload_photo():
         (unique_name, cloud_url, caption, category, now),
     )
     db.commit()
+    push_photos_to_cloud(db)
 
     if FIREBASE_DB:
         try:
@@ -1260,20 +1729,35 @@ def delete_photo(photo_id):
     db = get_db()
     row = db.execute("SELECT * FROM photos WHERE id = ?", (photo_id,)).fetchone()
     if row:
-        path = os.path.join(PHOTO_DIR, row["filename"])
-        if os.path.exists(path):
+        c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
+        fn = row["filename"]
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Save to blacklist so sync NEVER restores this photo
+        if c_url:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (c_url, now))
+        if fn:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('photo', ?, ?)", (fn, now))
+        db.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+        db.commit()
+
+        path = os.path.join(PHOTO_DIR, fn) if fn else None
+        if path and os.path.exists(path):
             try:
                 os.remove(path)
             except Exception:
                 pass
-        delete_file_from_firebase("photos", row["filename"])
-        if FIREBASE_DB:
+
+        delete_file_from_cloud("photos", fn, cloud_url=c_url)
+
+        if FIREBASE_DB and fn:
             try:
-                FIREBASE_DB.collection("photos").document(row["filename"]).delete()
+                FIREBASE_DB.collection("photos").document(fn).delete()
             except Exception as exc:
                 app.logger.warning("Firestore photo delete failed: %s", exc)
-        db.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
-        db.commit()
+
+        push_photos_to_cloud(db)
+        push_deleted_items_to_cloud(db)
     return redirect(url_for("admin_dashboard") + "#gallery")
 
 
@@ -1317,6 +1801,7 @@ def upload_video():
         (filename or "", cloud_url, embed_url, caption, category, now),
     )
     db.commit()
+    push_videos_to_cloud(db)
 
     if FIREBASE_DB:
         try:
@@ -1342,21 +1827,37 @@ def delete_video(video_id):
     db = get_db()
     row = db.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
     if row:
-        if row["filename"]:
-            path = os.path.join(VIDEO_DIR, row["filename"])
+        c_url = row["cloud_url"] if "cloud_url" in row.keys() else None
+        fn = row["filename"]
+        embed = row["embed_url"] if "embed_url" in row.keys() else None
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Save to blacklist so sync NEVER restores this video
+        if c_url:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (c_url, now))
+        if fn:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (fn, now))
+        if embed:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('video', ?, ?)", (embed, now))
+        db.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+        db.commit()
+
+        if fn:
+            path = os.path.join(VIDEO_DIR, fn)
             if os.path.exists(path):
                 try:
                     os.remove(path)
                 except Exception:
                     pass
-            delete_file_from_firebase("videos", row["filename"])
-            if FIREBASE_DB:
-                try:
-                    FIREBASE_DB.collection("videos").document(row["filename"]).delete()
-                except Exception as exc:
-                    app.logger.warning("Firestore video delete failed: %s", exc)
-        db.execute("DELETE FROM videos WHERE id = ?", (video_id,))
-        db.commit()
+        delete_file_from_cloud("videos", fn, cloud_url=c_url)
+        if FIREBASE_DB:
+            try:
+                doc_id = fn or embed or str(video_id)
+                FIREBASE_DB.collection("videos").document(doc_id).delete()
+            except Exception as exc:
+                app.logger.warning("Firestore video delete failed: %s", exc)
+        push_videos_to_cloud(db)
+        push_deleted_items_to_cloud(db)
     return redirect(url_for("admin_dashboard") + "#videos")
 
 
@@ -1366,6 +1867,7 @@ def approve_rating(rating_id):
     db = get_db()
     db.execute("UPDATE ratings SET approved = 1 WHERE id = ?", (rating_id,))
     db.commit()
+    push_ratings_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("ratings").document(str(rating_id)).set({"approved": True}, merge=True)
@@ -1378,8 +1880,14 @@ def approve_rating(rating_id):
 @login_required
 def delete_rating(rating_id):
     db = get_db()
-    db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
-    db.commit()
+    row = db.execute("SELECT * FROM ratings WHERE id = ?", (rating_id,)).fetchone()
+    if row:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        del_id = f"rating_{row['created_at']}_{row['name']}"
+        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (del_id, now))
+        db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
+        db.commit()
+        push_ratings_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()

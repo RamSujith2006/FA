@@ -558,6 +558,12 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
 
   if (!form || !fileInput) return;
 
+  function resetUploadUI() {
+    if (submitBtn) submitBtn.disabled = false;
+    if (progressBox) progressBox.style.display = "none";
+    if (percentText) percentText.textContent = "0%";
+  }
+
   form.addEventListener("submit", async (e) => {
     // If no file is attached, let form submit naturally (e.g. for video embed link)
     if (!fileInput.files || fileInput.files.length === 0) {
@@ -576,18 +582,18 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
     // Disable submit button & show progress box
     if (submitBtn) submitBtn.disabled = true;
     if (progressBox) progressBox.style.display = "block";
-    if (percentText) percentText.textContent = "0% (Preparing...)";
+    if (percentText) percentText.textContent = "0% (Preparing video upload...)";
 
     try {
       // Step 1: Request signature from backend
       const signRes = await fetch(`/admin/api/cloudinary-sign?folder=${folder}`);
       if (!signRes.ok) {
-        throw new Error("Cloud Storage upload signing failed. Standard submission will proceed.");
+        throw new Error("Could not authenticate with Cloud Storage server.");
       }
 
       const signData = await signRes.json();
       if (!signData.signature || !signData.cloud_name) {
-        throw new Error(signData.error || "Could not retrieve upload signature");
+        throw new Error(signData.error || "Could not retrieve upload credentials");
       }
 
       // Step 2: Prepare FormData for direct Cloudinary upload
@@ -598,54 +604,67 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
       formData.append("folder", signData.folder);
       formData.append("signature", signData.signature);
 
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/auto/upload`;
+      const resourceType = folder === "videos" ? "video" : "auto";
+      const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${resourceType}/upload`;
 
-      if (percentText) percentText.textContent = "Uploading to Cloud Storage...";
+      // Use XMLHttpRequest to enable accurate upload percentage progress
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", uploadUrl, true);
 
-      const uploadRes = await fetch(uploadUrl, {
-        method: "POST",
-        body: formData
-      });
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const percent = Math.round((evt.loaded / evt.total) * 100);
+          if (percentText) percentText.textContent = `${percent}% (Uploading to Cloud Storage...)`;
+        }
+      };
 
-      if (!uploadRes.ok) {
-        let errMessage = `Upload failed with status ${uploadRes.status}`;
-        try {
-          const errData = await uploadRes.json();
-          if (errData.error && errData.error.message) {
-            errMessage = errData.error.message;
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const resData = JSON.parse(xhr.responseText);
+            const secureUrl = resData.secure_url || resData.url;
+
+            if (secureUrl) {
+              if (percentText) percentText.textContent = "100% (Saving video details...)";
+              if (cloudUrlInput) cloudUrlInput.value = secureUrl;
+
+              // Clear heavy binary file from input so Vercel payload stays tiny (<1KB)
+              fileInput.value = "";
+
+              // Submit form with text fields (cloud_url, caption, category)
+              form.submit();
+            } else {
+              alert("Upload completed but failed to parse cloud storage URL.");
+              resetUploadUI();
+            }
+          } catch (e) {
+            alert("Error parsing upload response from Cloud Storage.");
+            resetUploadUI();
           }
-        } catch (_) {}
-        alert(`Cloud Storage Upload Error: ${errMessage}`);
+        } else {
+          let errMessage = `Upload failed with status ${xhr.status}`;
+          try {
+            const errData = JSON.parse(xhr.responseText);
+            if (errData.error && errData.error.message) {
+              errMessage = errData.error.message;
+            }
+          } catch (_) {}
+          alert(`Cloud Storage Upload Error: ${errMessage}`);
+          resetUploadUI();
+        }
+      };
+
+      xhr.onerror = function() {
+        alert("Network error occurred while streaming video to Cloud Storage.");
         resetUploadUI();
-        return;
-      }
+      };
 
-      const resData = await uploadRes.json();
-      const secureUrl = resData.secure_url || resData.url;
-
-      if (secureUrl) {
-        if (percentText) percentText.textContent = "100% (Saving...)";
-        if (cloudUrlInput) cloudUrlInput.value = secureUrl;
-
-        // Clear binary file from input so Vercel payload stays tiny (<1KB)
-        fileInput.value = "";
-
-        // Submit form with text fields only
-        form.submit();
-      } else {
-        alert("Upload completed but failed to parse cloud URL.");
-        resetUploadUI();
-      }
+      xhr.send(formData);
 
     } catch (err) {
-      console.warn("Direct upload error, falling back to standard form submit:", err);
-      alert(`Notice: Direct upload error (${err.message || "Network issue"}). Attempting server submission...`);
-      form.submit();
-    }
-
-    function resetUploadUI() {
-      if (submitBtn) submitBtn.disabled = false;
-      if (progressBox) progressBox.style.display = "none";
+      console.error("Direct upload error:", err);
+      alert(`Video Upload Error: ${err.message || "Failed to upload video to Cloud Storage"}`);
+      resetUploadUI();
     }
   });
 }
