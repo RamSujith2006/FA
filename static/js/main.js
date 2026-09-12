@@ -543,9 +543,10 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-/* Direct Media Upload to Cloudinary for Videos (Bypasses Vercel 4.5MB Payload Limit) */
+/* Direct Media Upload to Cloudinary for Photos & Videos (Bypasses Vercel 4.5MB Payload Limit) */
 document.addEventListener("DOMContentLoaded", () => {
   setupDirectMediaUpload("video-upload-form", "video-file", "video-cloud-url", "video-upload-progress", "video-upload-percent", "video-submit-btn", "videos");
+  setupDirectMediaUpload("photo-upload-form", "photo-file", "photo-cloud-url", "photo-upload-progress", "photo-upload-percent", "photo-submit-btn", "photos");
 });
 
 function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBoxId, percentTextId, submitBtnId, folder) {
@@ -604,7 +605,7 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
       formData.append("signature", signData.signature);
       formData.append("file", file);
 
-      const resourceType = folder === "videos" ? "video" : "auto";
+      const resourceType = signData.resource_type || (folder === "videos" ? "video" : "image");
       const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${resourceType}/upload`;
 
       // Use XMLHttpRequest to enable accurate upload percentage progress

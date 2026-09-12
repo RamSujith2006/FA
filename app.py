@@ -743,17 +743,9 @@ def sync_from_firestore_to_sqlite(db, force=False):
     sync_enquiries_from_cloud(db, deleted_set=deleted_set)
     sync_ratings_from_cloud(db, deleted_set=deleted_set)
 
-    # 3. Only sync photos & videos if local DB is empty
-    try:
-        p_cnt = db.execute("SELECT count(*) c FROM photos").fetchone()["c"]
-        v_cnt = db.execute("SELECT count(*) c FROM videos").fetchone()["c"]
-    except Exception:
-        p_cnt = v_cnt = 0
-
-    if p_cnt == 0:
-        sync_photos_from_cloud(db, deleted_set=deleted_set)
-    if v_cnt == 0:
-        sync_videos_from_cloud(db, deleted_set=deleted_set)
+    # 3. Always sync photos & videos to keep dashboard 100% accurate
+    sync_photos_from_cloud(db, deleted_set=deleted_set)
+    sync_videos_from_cloud(db, deleted_set=deleted_set)
 
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -1872,7 +1864,14 @@ def delete_photo(photo_id):
             except Exception:
                 pass
 
-    bg_cloud_sync("delete_photo", fn=fn, c_url=c_url)
+    delete_file_from_cloud("photos", fn, cloud_url=c_url)
+    if FIREBASE_DB and fn:
+        try:
+            FIREBASE_DB.collection("photos").document(fn).delete()
+        except Exception:
+            pass
+    push_photos_to_cloud(db, allow_empty=True)
+    push_deleted_items_to_cloud(db)
     flash("Photo deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#gallery")
 
@@ -1980,7 +1979,15 @@ def delete_video(video_id):
             except Exception:
                 pass
 
-    bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=video_id)
+    delete_file_from_cloud("videos", fn, cloud_url=c_url)
+    if FIREBASE_DB:
+        try:
+            doc_id = fn or embed or str(video_id)
+            FIREBASE_DB.collection("videos").document(doc_id).delete()
+        except Exception:
+            pass
+    push_videos_to_cloud(db, allow_empty=True)
+    push_deleted_items_to_cloud(db)
     flash("Video deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#videos")
 
