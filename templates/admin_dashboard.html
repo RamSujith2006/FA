@@ -107,6 +107,8 @@
             <div class="cap">{{ p.caption or p.category or 'Untitled' }}</div>
             {% if p.cloud_url %}<span class="cloud-tag">☁️ Cloud</span>{% endif %}
             <form method="post" action="{{ url_for('delete_photo', photo_id=p.id) }}" onsubmit="return confirm('Delete this photo?');">
+              <input type="hidden" name="cloud_url" value="{{ p.cloud_url or '' }}">
+              <input type="hidden" name="filename" value="{{ p.filename or '' }}">
               <button class="mini-btn danger" type="submit">Delete</button>
             </form>
           </div>
@@ -154,6 +156,9 @@
             {% endif %}
             <div class="cap">{{ v.caption or v.category or 'Untitled' }}</div>
             <form method="post" action="{{ url_for('delete_video', video_id=v.id) }}" onsubmit="return confirm('Delete this video?');">
+              <input type="hidden" name="cloud_url" value="{{ v.cloud_url or '' }}">
+              <input type="hidden" name="filename" value="{{ v.filename or '' }}">
+              <input type="hidden" name="embed_url" value="{{ v.embed_url or '' }}">
               <button class="mini-btn danger" type="submit">Delete</button>
             </form>
           </div>
