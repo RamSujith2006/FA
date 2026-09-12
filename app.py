@@ -279,20 +279,22 @@ def push_ratings_to_cloud(db):
         print(f"[Push Ratings Error]: {exc}")
 
 
-def sync_enquiries_from_cloud(db):
-    deleted_set = set()
-    try:
-        rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'enquiry'").fetchall()
-        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
-    except Exception:
-        pass
+def sync_enquiries_from_cloud(db, deleted_set=None):
+    if deleted_set is None:
+        deleted_set = set()
+        try:
+            rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'enquiry'").fetchall()
+            deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+        except Exception:
+            pass
 
     enquiries_list = []
 
     if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/enquiries.json"
+            cb = int(datetime.now().timestamp())
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/enquiries.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
@@ -324,7 +326,9 @@ def sync_enquiries_from_cloud(db):
         is_read = 1 if d.get("is_read") else 0
 
         del_id = f"enquiry_{created_at}_{phone}"
-        if del_id in deleted_set or phone in deleted_set:
+        del_id_alt = f"enquiry_{created_at}_{phone}_{name}"
+        if del_id in deleted_set or del_id_alt in deleted_set:
+            db.execute("DELETE FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at))
             continue
 
         existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND created_at = ?", (phone, created_at)).fetchone()
@@ -338,20 +342,22 @@ def sync_enquiries_from_cloud(db):
     db.commit()
 
 
-def sync_ratings_from_cloud(db):
-    deleted_set = set()
-    try:
-        rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'rating'").fetchall()
-        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
-    except Exception:
-        pass
+def sync_ratings_from_cloud(db, deleted_set=None):
+    if deleted_set is None:
+        deleted_set = set()
+        try:
+            rows_del = db.execute("SELECT identifier FROM deleted_items WHERE item_type = 'rating'").fetchall()
+            deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+        except Exception:
+            pass
 
     ratings_list = []
 
     if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/ratings.json"
+            cb = int(datetime.now().timestamp())
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/ratings.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
@@ -379,7 +385,8 @@ def sync_ratings_from_cloud(db):
         approved = 1 if d.get("approved") else 0
 
         del_id = f"rating_{created_at}_{name}"
-        if del_id in deleted_set or name in deleted_set:
+        if del_id in deleted_set:
+            db.execute("DELETE FROM ratings WHERE name = ? AND created_at = ?", (name, created_at))
             continue
 
         existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
@@ -518,7 +525,8 @@ def sync_deleted_items_from_cloud(db):
     if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/deleted_items.json"
+            cb = int(datetime.now().timestamp())
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/deleted_items.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
@@ -555,7 +563,8 @@ def sync_photos_from_cloud(db, deleted_set=None):
     if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/photos.json"
+            cb = int(datetime.now().timestamp())
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/photos.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
@@ -604,7 +613,8 @@ def sync_videos_from_cloud(db, deleted_set=None):
     if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/videos.json"
+            cb = int(datetime.now().timestamp())
+            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/videos.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
@@ -1724,9 +1734,12 @@ def delete_enquiry(enquiry_id):
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (del_id, now))
         if row["phone"]:
             db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (row["phone"], now))
+        if row["name"]:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (row["name"], now))
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
         push_enquiries_to_cloud(db)
+        push_deleted_items_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
@@ -2016,9 +2029,12 @@ def delete_rating(rating_id):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_id = f"rating_{row['created_at']}_{row['name']}"
         db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (del_id, now))
+        if row["name"]:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (row["name"], now))
         db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         db.commit()
         push_ratings_to_cloud(db)
+        push_deleted_items_to_cloud(db)
     if FIREBASE_DB:
         try:
             FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()

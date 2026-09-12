@@ -596,13 +596,13 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
         throw new Error(signData.error || "Could not retrieve upload credentials");
       }
 
-      // Step 2: Prepare FormData for direct Cloudinary upload
+      // Step 2: Prepare FormData for direct Cloudinary upload (file MUST be appended last!)
       const formData = new FormData();
-      formData.append("file", file);
       formData.append("api_key", signData.api_key);
       formData.append("timestamp", String(signData.timestamp));
       formData.append("folder", signData.folder);
       formData.append("signature", signData.signature);
+      formData.append("file", file);
 
       const resourceType = folder === "videos" ? "video" : "auto";
       const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${resourceType}/upload`;
@@ -634,12 +634,12 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
               // Submit form with text fields (cloud_url, caption, category)
               form.submit();
             } else {
-              alert("Upload completed but failed to parse cloud storage URL.");
-              resetUploadUI();
+              if (percentText) percentText.textContent = "Uploading via server fallback...";
+              form.submit();
             }
           } catch (e) {
-            alert("Error parsing upload response from Cloud Storage.");
-            resetUploadUI();
+            if (percentText) percentText.textContent = "Uploading via server fallback...";
+            form.submit();
           }
         } else {
           let errMessage = `Upload failed with status ${xhr.status}`;
@@ -649,22 +649,24 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
               errMessage = errData.error.message;
             }
           } catch (_) {}
-          alert(`Cloud Storage Upload Error: ${errMessage}`);
-          resetUploadUI();
+          console.warn(`Cloud Storage Direct Upload Notice: ${errMessage}. Falling back to server upload...`);
+          if (percentText) percentText.textContent = "Uploading via server fallback...";
+          form.submit();
         }
       };
 
       xhr.onerror = function() {
-        alert("Network error occurred while streaming video to Cloud Storage.");
-        resetUploadUI();
+        console.warn("Direct Cloudinary upload network error. Falling back to server upload...");
+        if (percentText) percentText.textContent = "Uploading via server fallback...";
+        form.submit();
       };
 
       xhr.send(formData);
 
     } catch (err) {
-      console.error("Direct upload error:", err);
-      alert(`Video Upload Error: ${err.message || "Failed to upload video to Cloud Storage"}`);
-      resetUploadUI();
+      console.warn("Direct upload error, falling back to server submit:", err);
+      if (percentText) percentText.textContent = "Uploading via server fallback...";
+      form.submit();
     }
   });
 }
