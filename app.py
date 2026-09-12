@@ -378,19 +378,15 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
                        (name, phone, email, event_type, event_date, location, message, created_at, is_read, existing["id"]))
 
     if enquiries_list:
-        cloud_ids = {d.get("id") for d in enquiries_list if d and d.get("id")}
-        cloud_keys = {f"{d.get('created_at')}_{(d.get('phone') or '').strip()}" for d in enquiries_list if d and d.get("created_at")}
-
         local_rows = db.execute("SELECT id, created_at, phone, name FROM enquiries").fetchall()
         for r in local_rows:
-            r_key = f"{r['created_at']}_{(r['phone'] or '').strip()}"
             del_check = {
                 f"enquiry_{r['created_at']}_{r['phone']}",
                 f"enquiry_{r['id']}",
                 f"enquiry_{r['phone']}",
                 f"enquiry_{r['name']}",
             }
-            if del_check.intersection(deleted_set) or (r["id"] not in cloud_ids and r_key not in cloud_keys):
+            if del_check.intersection(deleted_set):
                 db.execute("DELETE FROM enquiries WHERE id = ?", (r["id"],))
 
     db.commit()
@@ -486,18 +482,14 @@ def sync_ratings_from_cloud(db, deleted_set=None):
                        (name, stars, comment, created_at, approved, existing["id"]))
 
     if ratings_list:
-        cloud_ids = {d.get("id") for d in ratings_list if d and d.get("id")}
-        cloud_keys = {f"{d.get('created_at')}_{(d.get('name') or '').strip()}" for d in ratings_list if d and d.get("created_at")}
-
         local_rows = db.execute("SELECT id, created_at, name FROM ratings").fetchall()
         for r in local_rows:
-            r_key = f"{r['created_at']}_{(r['name'] or '').strip()}"
             del_check = {
                 f"rating_{r['created_at']}_{r['name']}",
                 f"rating_{r['id']}",
                 f"rating_{r['name']}",
             }
-            if del_check.intersection(deleted_set) or (r["id"] not in cloud_ids and r_key not in cloud_keys):
+            if del_check.intersection(deleted_set):
                 db.execute("DELETE FROM ratings WHERE id = ?", (r["id"],))
 
     db.commit()
@@ -795,14 +787,10 @@ def sync_photos_from_cloud(db, deleted_set=None):
             )
 
     if photos_list:
-        cloud_fns = {d.get("filename") for d in photos_list if d and d.get("filename")}
-        cloud_urls = {d.get("cloud_url") for d in photos_list if d and d.get("cloud_url")}
-
         local_rows = db.execute("SELECT id, filename, cloud_url FROM photos").fetchall()
         for r in local_rows:
             is_del = is_item_deleted(deleted_set, fn=r["filename"], cloud_url=r["cloud_url"], public_id=f"photo_{r['id']}")
-            not_in_cloud = ((not r["filename"] or r["filename"] not in cloud_fns) and (not r["cloud_url"] or r["cloud_url"] not in cloud_urls))
-            if is_del or not_in_cloud:
+            if is_del:
                 db.execute("DELETE FROM photos WHERE id = ?", (r["id"],))
 
     db.commit()
@@ -873,19 +861,10 @@ def sync_videos_from_cloud(db, deleted_set=None):
             )
 
     if videos_list:
-        cloud_fns = {d.get("filename") for d in videos_list if d and d.get("filename")}
-        cloud_urls = {d.get("cloud_url") for d in videos_list if d and d.get("cloud_url")}
-        cloud_embeds = {d.get("embed_url") for d in videos_list if d and d.get("embed_url")}
-
         local_rows = db.execute("SELECT id, filename, cloud_url, embed_url FROM videos").fetchall()
         for r in local_rows:
             is_del = is_item_deleted(deleted_set, fn=r["filename"], cloud_url=r["cloud_url"], embed_url=r["embed_url"], public_id=f"video_{r['id']}")
-            not_in_cloud = (
-                (not r["filename"] or r["filename"] not in cloud_fns) and
-                (not r["cloud_url"] or r["cloud_url"] not in cloud_urls) and
-                (not r["embed_url"] or r["embed_url"] not in cloud_embeds)
-            )
-            if is_del or not_in_cloud:
+            if is_del:
                 db.execute("DELETE FROM videos WHERE id = ?", (r["id"],))
 
     db.commit()
@@ -1673,6 +1652,7 @@ def api_cloud_storage_upload():
 
     results = []
     db = get_db()
+    sync_from_firestore_to_sqlite(db)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for file in uploaded_files:
@@ -1757,6 +1737,9 @@ def api_cloud_storage_upload():
                 "cloud_url": cloud_url,
                 "local_url": url_for("static", filename=f"uploads/videos/{unique_name}")
             })
+
+    push_photos_to_cloud(db)
+    push_videos_to_cloud(db)
 
     return jsonify({"success": True, "uploaded": results, "count": len(results)})
 
