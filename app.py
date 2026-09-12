@@ -222,10 +222,13 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
 
 LAST_FIRESTORE_SYNC = 0
 
-def push_enquiries_to_cloud(db):
+def push_enquiries_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM enquiries ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
+        if not data and not allow_empty:
+            print("[Push Enquiries Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+            return
 
         if HAS_CLOUDINARY:
             try:
@@ -251,10 +254,13 @@ def push_enquiries_to_cloud(db):
         print(f"[Push Enquiries Error]: {exc}")
 
 
-def push_ratings_to_cloud(db):
+def push_ratings_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM ratings ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
+        if not data and not allow_empty:
+            print("[Push Ratings Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+            return
 
         if HAS_CLOUDINARY:
             try:
@@ -316,25 +322,21 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
     for d in enquiries_list:
         if not d:
             continue
-        name = d.get("name", "").strip()
-        phone = d.get("phone", "").strip()
-        email = d.get("email", "").strip()
-        event_type = d.get("event_type", "").strip()
-        event_date = d.get("event_date", "").strip()
-        location = d.get("location", "").strip()
-        message = d.get("message", "").strip()
+        name = (d.get("name") or "").strip()
+        phone = (d.get("phone") or "").strip()
+        email = (d.get("email") or "").strip()
+        event_type = (d.get("event_type") or "").strip()
+        event_date = (d.get("event_date") or "").strip()
+        location = (d.get("location") or "").strip()
+        message = (d.get("message") or "").strip()
         created_at = d.get("created_at") or "2026-01-01 00:00:00"
         is_read = 1 if d.get("is_read") else 0
         item_id = d.get("id")
 
         del_id1 = f"enquiry_{created_at}_{phone}"
-        del_id2 = f"enquiry_{created_at}_{phone}_{name}"
-        del_id3 = f"enquiry_{phone}_{name}"
-        del_id4 = f"enquiry_{item_id}" if item_id else None
+        del_id2 = f"enquiry_{item_id}" if item_id else None
 
-        if del_id1 in deleted_set or del_id2 in deleted_set or del_id3 in deleted_set or (del_id4 and del_id4 in deleted_set):
-            if phone:
-                db.execute("DELETE FROM enquiries WHERE phone = ? AND (created_at = ? OR name = ?)", (phone, created_at, name))
+        if del_id1 in deleted_set or (del_id2 and del_id2 in deleted_set):
             if item_id:
                 db.execute("DELETE FROM enquiries WHERE id = ?", (item_id,))
             continue
@@ -342,25 +344,23 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
         existing = None
         if item_id:
             existing = db.execute("SELECT id FROM enquiries WHERE id = ?", (item_id,)).fetchone()
-        if not existing and phone:
-            existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND (name = ? OR message = ?)", (phone, name, message)).fetchone()
+        if not existing and phone and name:
+            existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND name = ? AND created_at = ?", (phone, name, created_at)).fetchone()
 
         if not existing:
-            db.execute(
-                "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (name, phone, email, event_type, event_date, location, message, created_at, is_read)
-            )
+            if item_id:
+                db.execute(
+                    "INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (item_id, name, phone, email, event_type, event_date, location, message, created_at, is_read)
+                )
+            else:
+                db.execute(
+                    "INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (name, phone, email, event_type, event_date, location, message, created_at, is_read)
+                )
         else:
-            db.execute("UPDATE enquiries SET is_read = ? WHERE id = ?", (is_read, existing["id"]))
-
-    try:
-        db.execute("""
-            DELETE FROM enquiries WHERE rowid NOT IN (
-                SELECT MIN(rowid) FROM enquiries GROUP BY name, phone, COALESCE(message, '')
-            )
-        """)
-    except Exception:
-        pass
+            db.execute("UPDATE enquiries SET name = ?, phone = ?, email = ?, event_type = ?, event_date = ?, location = ?, message = ?, created_at = ?, is_read = ? WHERE id = ?",
+                       (name, phone, email, event_type, event_date, location, message, created_at, is_read, existing["id"]))
 
     db.commit()
 
@@ -401,19 +401,21 @@ def sync_ratings_from_cloud(db, deleted_set=None):
     for d in ratings_list:
         if not d:
             continue
-        name = d.get("name", "").strip()
+        name = (d.get("name") or "").strip()
         stars = d.get("stars", 5)
-        comment = d.get("comment", "").strip()
+        try:
+            stars = int(stars)
+        except (ValueError, TypeError):
+            stars = 5
+        comment = (d.get("comment") or "").strip()
         created_at = d.get("created_at") or "2026-01-01 00:00:00"
         approved = 1 if d.get("approved") else 0
         item_id = d.get("id")
 
         del_id1 = f"rating_{created_at}_{name}"
-        del_id2 = f"rating_{name}_{comment}"
-        del_id3 = f"rating_{item_id}" if item_id else None
+        del_id2 = f"rating_{item_id}" if item_id else None
 
-        if del_id1 in deleted_set or del_id2 in deleted_set or (del_id3 and del_id3 in deleted_set):
-            db.execute("DELETE FROM ratings WHERE name = ? AND (created_at = ? OR comment = ?)", (name, created_at, comment))
+        if del_id1 in deleted_set or (del_id2 and del_id2 in deleted_set):
             if item_id:
                 db.execute("DELETE FROM ratings WHERE id = ?", (item_id,))
             continue
@@ -422,24 +424,22 @@ def sync_ratings_from_cloud(db, deleted_set=None):
         if item_id:
             existing = db.execute("SELECT id FROM ratings WHERE id = ?", (item_id,)).fetchone()
         if not existing and name:
-            existing = db.execute("SELECT id FROM ratings WHERE name = ? AND comment = ?", (name, comment)).fetchone()
+            existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
 
         if not existing:
-            db.execute(
-                "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
-                (name, stars, comment, created_at, approved)
-            )
+            if item_id:
+                db.execute(
+                    "INSERT INTO ratings (id, name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?, ?)",
+                    (item_id, name, stars, comment, created_at, approved)
+                )
+            else:
+                db.execute(
+                    "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, ?)",
+                    (name, stars, comment, created_at, approved)
+                )
         else:
-            db.execute("UPDATE ratings SET approved = ? WHERE id = ?", (approved, existing["id"]))
-
-    try:
-        db.execute("""
-            DELETE FROM ratings WHERE rowid NOT IN (
-                SELECT MIN(rowid) FROM ratings GROUP BY name, stars, COALESCE(comment, '')
-            )
-        """)
-    except Exception:
-        pass
+            db.execute("UPDATE ratings SET name = ?, stars = ?, comment = ?, created_at = ?, approved = ? WHERE id = ?",
+                       (name, stars, comment, created_at, approved, existing["id"]))
 
     db.commit()
 
@@ -1828,15 +1828,19 @@ def delete_enquiry(enquiry_id):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         del_ids = [
             f"enquiry_{row['created_at']}_{row['phone']}",
-            f"enquiry_{row['created_at']}_{row['phone']}_{row['name']}",
-            f"enquiry_{row['phone']}_{row['name']}",
             f"enquiry_{row['id']}"
         ]
         for d_id in del_ids:
             db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('enquiry', ?, ?)", (d_id, now))
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
-        bg_cloud_sync("delete_enquiry", enquiry_id=enquiry_id)
+        push_enquiries_to_cloud(db, allow_empty=True)
+        push_deleted_items_to_cloud(db)
+        if FIREBASE_DB and enquiry_id:
+            try:
+                FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
+            except Exception:
+                pass
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
 
@@ -2099,11 +2103,21 @@ def delete_rating(rating_id):
     row = db.execute("SELECT * FROM ratings WHERE id = ?", (rating_id,)).fetchone()
     if row:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        del_id = f"rating_{row['created_at']}_{row['name']}"
-        db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (del_id, now))
+        del_ids = [
+            f"rating_{row['created_at']}_{row['name']}",
+            f"rating_{row['id']}"
+        ]
+        for d_id in del_ids:
+            db.execute("INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES ('rating', ?, ?)", (d_id, now))
         db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         db.commit()
-        bg_cloud_sync("delete_rating", rating_id=rating_id)
+        push_ratings_to_cloud(db, allow_empty=True)
+        push_deleted_items_to_cloud(db)
+        if FIREBASE_DB and rating_id:
+            try:
+                FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
+            except Exception:
+                pass
     return redirect(url_for("admin_dashboard") + "#reviews")
 
 
