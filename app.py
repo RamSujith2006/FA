@@ -976,8 +976,33 @@ def sync_videos_from_cloud(db, deleted_set=None):
 
 
 def sync_from_firestore_to_sqlite(db, force=False):
-    """Cloud sync disabled. Using local SQLite database as definitive storage."""
-    return
+    global LAST_FIRESTORE_SYNC
+    now_ts = datetime.now().timestamp()
+    if not force and (now_ts - LAST_FIRESTORE_SYNC < 2):
+        return
+    LAST_FIRESTORE_SYNC = now_ts
+
+    try:
+        # 1. Sync deleted_items blacklist from Cloud Storage/MongoDB first
+        sync_deleted_items_from_cloud(db)
+
+        # Fetch updated blacklist of deleted item identifiers
+        deleted_set = set()
+        try:
+            rows_del = db.execute("SELECT identifier FROM deleted_items").fetchall()
+            deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
+        except Exception:
+            pass
+
+        # 2. Sync enquiries & ratings from Cloud / MongoDB Atlas
+        sync_enquiries_from_cloud(db, deleted_set=deleted_set)
+        sync_ratings_from_cloud(db, deleted_set=deleted_set)
+
+        # 3. Sync photos & videos from Cloud / MongoDB Atlas
+        sync_photos_from_cloud(db, deleted_set=deleted_set)
+        sync_videos_from_cloud(db, deleted_set=deleted_set)
+    except Exception as exc:
+        pass
 
 
 
@@ -1235,13 +1260,14 @@ def submit_enquiry():
         )
         db.commit()
 
-        # Asynchronous background thread for instant response (<15ms)
+        # Asynchronous background thread for instant response (<15ms) & cloud database persistence
         enquiry_payload = {
             "name": name, "phone": phone, "email": email,
             "event_type": event_type, "event_date": event_date,
             "location": location, "message": message,
         }
         threading.Thread(target=notify_owner_new_enquiry, args=(enquiry_payload,), daemon=True).start()
+        threading.Thread(target=bg_cloud_push, args=("enquiry",), daemon=True).start()
     except Exception as exc:
         app.logger.error("Enquiry save error: %s", exc)
         if is_ajax:
@@ -1286,6 +1312,9 @@ def submit_rating():
             (name, stars_int, comment, now),
         )
         db.commit()
+
+        # Asynchronous background cloud sync to MongoDB Atlas
+        threading.Thread(target=bg_cloud_push, args=("rating",), daemon=True).start()
     except Exception as exc:
         app.logger.error("Rating save error: %s", exc)
         if is_ajax:
@@ -1482,6 +1511,22 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
                 print(f"[Firebase Storage Delete]: {blob_name}")
         except Exception as exc:
             app.logger.warning("Firebase Storage delete failed: %s", exc)
+
+
+def bg_cloud_push(target):
+    try:
+        with sqlite3.connect(DB_PATH) as db:
+            db.row_factory = sqlite3.Row
+            if target == "enquiry":
+                push_enquiries_to_cloud(db, allow_empty=True)
+            elif target == "rating":
+                push_ratings_to_cloud(db, allow_empty=True)
+            elif target == "photo":
+                push_photos_to_cloud(db, allow_empty=True)
+            elif target == "video":
+                push_videos_to_cloud(db, allow_empty=True)
+    except Exception as exc:
+        print(f"[BG Cloud Push Notice]: {exc}")
 
 
 @app.route("/admin")
@@ -1924,11 +1969,16 @@ def delete_enquiry(enquiry_id):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                mongo.enquiries.delete_many({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
-                if row["phone"] and row["name"]:
-                    mongo.enquiries.delete_many({"phone": row["phone"], "name": row["name"]})
-            except Exception:
-                pass
+                conds = [{"id": enquiry_id}, {"id": str(enquiry_id)}]
+                if row["created_at"] and row["phone"]:
+                    conds.append({"created_at": row["created_at"], "phone": row["phone"]})
+                if row["created_at"]:
+                    conds.append({"created_at": row["created_at"]})
+                if row["phone"]:
+                    conds.append({"phone": row["phone"]})
+                mongo.enquiries.delete_many({"$or": conds})
+            except Exception as exc:
+                print(f"[Mongo Enquiry Delete Warning]: {exc}")
         push_deleted_items_to_cloud(db)
         if FIREBASE_DB and enquiry_id:
             try:
@@ -2248,11 +2298,16 @@ def delete_rating(rating_id):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                mongo.ratings.delete_many({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
+                conds = [{"id": rating_id}, {"id": str(rating_id)}]
+                if row["created_at"] and row["name"]:
+                    conds.append({"created_at": row["created_at"], "name": row["name"]})
+                if row["created_at"]:
+                    conds.append({"created_at": row["created_at"]})
                 if row["name"]:
-                    mongo.ratings.delete_many({"name": row["name"], "created_at": row["created_at"]})
-            except Exception:
-                pass
+                    conds.append({"name": row["name"]})
+                mongo.ratings.delete_many({"$or": conds})
+            except Exception as exc:
+                print(f"[Mongo Rating Delete Warning]: {exc}")
         push_deleted_items_to_cloud(db)
         if FIREBASE_DB and rating_id:
             try:
