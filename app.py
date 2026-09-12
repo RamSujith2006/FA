@@ -279,19 +279,7 @@ def push_enquiries_to_cloud(db, allow_empty=False):
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
-        if HAS_CLOUDINARY:
-            try:
-                import cloudinary.uploader
-                cloudinary.uploader.upload(
-                    json.dumps(data).encode("utf-8"),
-                    folder="fa-events/data",
-                    public_id="enquiries.json",
-                    resource_type="raw",
-                    overwrite=True,
-                    invalidate=True
-                )
-            except Exception as exc:
-                print(f"[Cloudinary Enquiries Push Error]: {exc}")
+
 
         if FIREBASE_DB:
             for item in data:
@@ -327,19 +315,7 @@ def push_ratings_to_cloud(db, allow_empty=False):
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
-        if HAS_CLOUDINARY:
-            try:
-                import cloudinary.uploader
-                cloudinary.uploader.upload(
-                    json.dumps(data).encode("utf-8"),
-                    folder="fa-events/data",
-                    public_id="ratings.json",
-                    resource_type="raw",
-                    overwrite=True,
-                    invalidate=True
-                )
-            except Exception as exc:
-                print(f"[Cloudinary Ratings Push Error]: {exc}")
+
 
         if FIREBASE_DB:
             for item in data:
@@ -371,24 +347,7 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
         except Exception as exc:
             print(f"[MongoDB Enquiries Sync Error]: {exc}")
 
-    if not enquiries_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
-        try:
-            import urllib.request, time
-            cb = int(time.time() * 1000)
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/enquiries.json?_cb={cb}&t={cb}"
-            req = urllib.request.Request(
-                raw_url,
-                headers={
-                    "User-Agent": "FAEventsApp/1.0",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                if resp.status == 200:
-                    enquiries_list = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            pass
+
 
     if not enquiries_list and FIREBASE_DB:
         try:
@@ -466,24 +425,7 @@ def sync_ratings_from_cloud(db, deleted_set=None):
         except Exception as exc:
             print(f"[MongoDB Ratings Sync Error]: {exc}")
 
-    if not ratings_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
-        try:
-            import urllib.request, time
-            cb = int(time.time() * 1000)
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/ratings.json?_cb={cb}&t={cb}"
-            req = urllib.request.Request(
-                raw_url,
-                headers={
-                    "User-Agent": "FAEventsApp/1.0",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                if resp.status == 200:
-                    ratings_list = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            pass
+
 
     if not ratings_list and FIREBASE_DB:
         try:
@@ -556,19 +498,7 @@ def push_deleted_items_to_cloud(db):
             except Exception as exc:
                 print(f"[MongoDB Deleted Items Push Error]: {exc}")
 
-        if HAS_CLOUDINARY:
-            try:
-                import cloudinary.uploader
-                cloudinary.uploader.upload(
-                    json.dumps(data).encode("utf-8"),
-                    folder="fa-events/data",
-                    public_id="deleted_items.json",
-                    resource_type="raw",
-                    overwrite=True,
-                    invalidate=True
-                )
-            except Exception as exc:
-                print(f"[Cloudinary Deleted Items Push Error]: {exc}")
+
     except Exception as exc:
         print(f"[Push Deleted Items Error]: {exc}")
 
@@ -594,19 +524,7 @@ def push_photos_to_cloud(db, allow_empty=False):
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
 
-        if HAS_CLOUDINARY:
-            try:
-                import cloudinary.uploader
-                cloudinary.uploader.upload(
-                    json.dumps(data).encode("utf-8"),
-                    folder="fa-events/data",
-                    public_id="photos.json",
-                    resource_type="raw",
-                    overwrite=True,
-                    invalidate=True
-                )
-            except Exception as exc:
-                print(f"[Cloudinary Photos Push Error]: {exc}")
+
     except Exception as exc:
         print(f"[Push Photos Error]: {exc}")
 
@@ -635,19 +553,7 @@ def push_videos_to_cloud(db, allow_empty=False):
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
 
-        if HAS_CLOUDINARY:
-            try:
-                import cloudinary.uploader
-                cloudinary.uploader.upload(
-                    json.dumps(data).encode("utf-8"),
-                    folder="fa-events/data",
-                    public_id="videos.json",
-                    resource_type="raw",
-                    overwrite=True,
-                    invalidate=True
-                )
-            except Exception as exc:
-                print(f"[Cloudinary Videos Push Error]: {exc}")
+
     except Exception as exc:
         print(f"[Push Videos Error]: {exc}")
 
@@ -780,24 +686,7 @@ def sync_deleted_items_from_cloud(db):
         except Exception as exc:
             print(f"[MongoDB Deleted Items Sync Error]: {exc}")
 
-    if not deleted_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
-        try:
-            import urllib.request, time
-            cb = int(time.time() * 1000)
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/deleted_items.json?_cb={cb}&t={cb}"
-            req = urllib.request.Request(
-                raw_url,
-                headers={
-                    "User-Agent": "FAEventsApp/1.0",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                if resp.status == 200:
-                    deleted_list = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            pass
+
 
     for d in deleted_list:
         if not d or not d.get("identifier"):
@@ -835,24 +724,7 @@ def sync_photos_from_cloud(db, deleted_set=None):
         except Exception as exc:
             print(f"[MongoDB Photos Sync Error]: {exc}")
 
-    if not photos_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
-        try:
-            import urllib.request, time
-            cb = int(time.time() * 1000)
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/photos.json?_cb={cb}&t={cb}"
-            req = urllib.request.Request(
-                raw_url,
-                headers={
-                    "User-Agent": "FAEventsApp/1.0",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                if resp.status == 200:
-                    photos_list = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            pass
+
 
     for d in photos_list:
         if not d:
@@ -911,24 +783,7 @@ def sync_videos_from_cloud(db, deleted_set=None):
         except Exception as exc:
             print(f"[MongoDB Videos Sync Error]: {exc}")
 
-    if not videos_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
-        try:
-            import urllib.request, time
-            cb = int(time.time() * 1000)
-            raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/videos.json?_cb={cb}&t={cb}"
-            req = urllib.request.Request(
-                raw_url,
-                headers={
-                    "User-Agent": "FAEventsApp/1.0",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                if resp.status == 200:
-                    videos_list = json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            pass
+
 
     for d in videos_list:
         if not d:
