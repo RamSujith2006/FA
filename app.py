@@ -224,24 +224,21 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
         try:
             import cloudinary.uploader
 
-            possible_ids = set()
+            res_type = "video" if folder == "videos" else "image"
+            pid = None
             if cloud_url and "fa-events/" in cloud_url:
                 after = cloud_url.split("fa-events/")[-1]
-                possible_ids.add("fa-events/" + after)
-                possible_ids.add("fa-events/" + after.rsplit(".", 1)[0])
-            if filename:
-                possible_ids.add(f"fa-events/{folder}/{filename}")
-                possible_ids.add(f"fa-events/{folder}/{filename.rsplit('.', 1)[0]}")
+                pid = "fa-events/" + after.rsplit(".", 1)[0]
+            elif filename:
+                pid = f"fa-events/{folder}/{filename.rsplit('.', 1)[0]}"
 
-            res_types = ["image", "video", "raw"]
-            for pid in possible_ids:
-                for rtype in res_types:
-                    try:
-                        res = cloudinary.uploader.destroy(pid, resource_type=rtype)
-                        if res.get("result") == "ok":
-                            print(f"[Cloudinary Storage Delete]: {pid} ({rtype}) -> ok")
-                    except Exception:
-                        pass
+            if pid:
+                try:
+                    res = cloudinary.uploader.destroy(pid, resource_type=res_type)
+                    if res.get("result") != "ok":
+                        cloudinary.uploader.destroy(pid, resource_type="raw")
+                except Exception:
+                    pass
         except Exception as exc:
             app.logger.warning("Cloudinary delete warning: %s", exc)
 
@@ -251,7 +248,6 @@ def delete_file_from_cloud(folder, filename=None, cloud_url=None):
             blob = FIREBASE_BUCKET.blob(blob_name)
             if blob.exists():
                 blob.delete()
-                print(f"[Firebase Storage Delete]: {blob_name}")
         except Exception as exc:
             app.logger.warning("Firebase Storage delete failed: %s", exc)
 
@@ -2012,21 +2008,20 @@ def mark_enquiry_read(enquiry_id):
 @login_required
 def delete_enquiry(enquiry_id):
     db = get_db()
-    sync_enquiries_from_cloud(db)
     row = db.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
     if row:
         record_deleted_identifiers(db, "enquiry", enquiry_id, phone=row["phone"], name=row["name"], created_at=row["created_at"])
         db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
         db.commit()
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
-                MONGO_DB.enquiries.delete_many({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
+                mongo.enquiries.delete_many({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
                 if row["phone"] and row["name"]:
-                    MONGO_DB.enquiries.delete_many({"phone": row["phone"], "name": row["name"]})
+                    mongo.enquiries.delete_many({"phone": row["phone"], "name": row["name"]})
             except Exception:
                 pass
         push_deleted_items_to_cloud(db)
-        push_enquiries_to_cloud(db, allow_empty=True)
         if FIREBASE_DB and enquiry_id:
             try:
                 FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
@@ -2151,8 +2146,24 @@ def delete_photo(photo_id):
         db.execute("DELETE FROM photos WHERE filename = ?", (fn,))
     if c_url:
         db.execute("DELETE FROM photos WHERE cloud_url = ?", (c_url,))
+    db.commit()
 
     record_deleted_identifiers(db, "photo", p_id, fn=fn, cloud_url=c_url)
+
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            conds = []
+            if p_id:
+                conds.extend([{"id": p_id}, {"id": str(p_id)}])
+            if fn:
+                conds.append({"filename": fn})
+            if c_url:
+                conds.append({"cloud_url": c_url})
+            if conds:
+                mongo.photos.delete_many({"$or": conds})
+        except Exception:
+            pass
 
     if fn:
         path = os.path.join(PHOTO_DIR, fn)
@@ -2162,14 +2173,11 @@ def delete_photo(photo_id):
             except Exception:
                 pass
 
-    delete_file_from_cloud("photos", fn, cloud_url=c_url)
-    if FIREBASE_DB and fn:
-        try:
-            FIREBASE_DB.collection("photos").document(fn).delete()
-        except Exception:
-            pass
-    push_photos_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
+    
+    # Background CDN deletion for instant response (<30ms)
+    threading.Thread(target=delete_file_from_cloud, args=("photos", fn, c_url)).start()
+
     flash("Photo deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#gallery")
 
@@ -2266,8 +2274,26 @@ def delete_video(video_id):
         db.execute("DELETE FROM videos WHERE cloud_url = ?", (c_url,))
     if embed:
         db.execute("DELETE FROM videos WHERE embed_url = ?", (embed,))
+    db.commit()
 
     record_deleted_identifiers(db, "video", v_id, fn=fn, cloud_url=c_url, embed_url=embed)
+
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            conds = []
+            if v_id:
+                conds.extend([{"id": v_id}, {"id": str(v_id)}])
+            if fn:
+                conds.append({"filename": fn})
+            if c_url:
+                conds.append({"cloud_url": c_url})
+            if embed:
+                conds.append({"embed_url": embed})
+            if conds:
+                mongo.videos.delete_many({"$or": conds})
+        except Exception:
+            pass
 
     if fn:
         path = os.path.join(VIDEO_DIR, fn)
@@ -2277,15 +2303,11 @@ def delete_video(video_id):
             except Exception:
                 pass
 
-    delete_file_from_cloud("videos", fn, cloud_url=c_url)
-    if FIREBASE_DB:
-        try:
-            doc_id = fn or embed or str(v_id)
-            FIREBASE_DB.collection("videos").document(doc_id).delete()
-        except Exception:
-            pass
-    push_videos_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
+
+    # Background CDN deletion for instant response (<30ms)
+    threading.Thread(target=delete_file_from_cloud, args=("videos", fn, c_url)).start()
+
     flash("Video deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#videos")
 
@@ -2310,21 +2332,20 @@ def approve_rating(rating_id):
 @login_required
 def delete_rating(rating_id):
     db = get_db()
-    sync_ratings_from_cloud(db)
     row = db.execute("SELECT * FROM ratings WHERE id = ?", (rating_id,)).fetchone()
     if row:
         record_deleted_identifiers(db, "rating", rating_id, name=row["name"], created_at=row["created_at"])
         db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         db.commit()
-        if HAS_MONGO and MONGO_DB is not None:
+        mongo = get_mongo_db()
+        if mongo is not None:
             try:
-                MONGO_DB.ratings.delete_many({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
+                mongo.ratings.delete_many({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
                 if row["name"]:
-                    MONGO_DB.ratings.delete_many({"name": row["name"], "created_at": row["created_at"]})
+                    mongo.ratings.delete_many({"name": row["name"], "created_at": row["created_at"]})
             except Exception:
                 pass
         push_deleted_items_to_cloud(db)
-        push_ratings_to_cloud(db, allow_empty=True)
         if FIREBASE_DB and rating_id:
             try:
                 FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
