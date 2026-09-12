@@ -414,13 +414,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
         is_read = 1 if d.get("is_read") else 0
         item_id = d.get("id")
 
-        possible_del = {
-            f"enquiry_{created_at}_{phone}" if (created_at and phone) else None,
-            f"enquiry_{item_id}" if item_id else None,
-        }
-        possible_del.discard(None)
-
-        if possible_del.intersection(deleted_set):
+        unique_del_key = f"enquiry_{created_at}_{phone}" if (created_at and phone) else None
+        if unique_del_key and unique_del_key in deleted_set:
             if item_id:
                 db.execute("DELETE FROM enquiries WHERE id = ?", (item_id,))
             if phone and name:
@@ -430,8 +425,6 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
         existing = None
         if created_at and phone and name:
             existing = db.execute("SELECT id FROM enquiries WHERE phone = ? AND name = ? AND created_at = ?", (phone, name, created_at)).fetchone()
-        if not existing and item_id:
-            existing = db.execute("SELECT id FROM enquiries WHERE id = ?", (item_id,)).fetchone()
 
         if not existing:
             db.execute(
@@ -443,16 +436,12 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
                        (name, phone, email, event_type, event_date, location, message, created_at, is_read, existing["id"]))
 
     if enquiries_list:
-        local_rows = db.execute("SELECT id, created_at, phone, name FROM enquiries").fetchall()
+        local_rows = db.execute("SELECT id, created_at, phone FROM enquiries").fetchall()
         for r in local_rows:
-            del_check = {
-                f"enquiry_{r['created_at']}_{r['phone']}",
-                f"enquiry_{r['id']}",
-                f"enquiry_{r['phone']}",
-                f"enquiry_{r['name']}",
-            }
-            if del_check.intersection(deleted_set):
-                db.execute("DELETE FROM enquiries WHERE id = ?", (r["id"],))
+            if r['created_at'] and r['phone']:
+                del_key = f"enquiry_{r['created_at']}_{r['phone']}"
+                if del_key in deleted_set:
+                    db.execute("DELETE FROM enquiries WHERE id = ?", (r["id"],))
 
     db.commit()
 
@@ -520,13 +509,8 @@ def sync_ratings_from_cloud(db, deleted_set=None):
         approved = 1 if d.get("approved") else 0
         item_id = d.get("id")
 
-        possible_del = {
-            f"rating_{created_at}_{name}" if (created_at and name) else None,
-            f"rating_{item_id}" if item_id else None,
-        }
-        possible_del.discard(None)
-
-        if possible_del.intersection(deleted_set):
+        unique_del_key = f"rating_{created_at}_{name}" if (created_at and name) else None
+        if unique_del_key and unique_del_key in deleted_set:
             if item_id:
                 db.execute("DELETE FROM ratings WHERE id = ?", (item_id,))
             if name:
@@ -536,8 +520,6 @@ def sync_ratings_from_cloud(db, deleted_set=None):
         existing = None
         if created_at and name:
             existing = db.execute("SELECT id FROM ratings WHERE name = ? AND created_at = ?", (name, created_at)).fetchone()
-        if not existing and item_id:
-            existing = db.execute("SELECT id FROM ratings WHERE id = ?", (item_id,)).fetchone()
 
         if not existing:
             db.execute(
@@ -551,13 +533,10 @@ def sync_ratings_from_cloud(db, deleted_set=None):
     if ratings_list:
         local_rows = db.execute("SELECT id, created_at, name FROM ratings").fetchall()
         for r in local_rows:
-            del_check = {
-                f"rating_{r['created_at']}_{r['name']}",
-                f"rating_{r['id']}",
-                f"rating_{r['name']}",
-            }
-            if del_check.intersection(deleted_set):
-                db.execute("DELETE FROM ratings WHERE id = ?", (r["id"],))
+            if r['created_at'] and r['name']:
+                del_key = f"rating_{r['created_at']}_{r['name']}"
+                if del_key in deleted_set:
+                    db.execute("DELETE FROM ratings WHERE id = ?", (r["id"],))
 
     db.commit()
 
@@ -707,14 +686,10 @@ def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, 
     if item_type == "enquiry":
         if created_at and phone:
             ids_to_add.add(f"enquiry_{created_at}_{phone}")
-        if item_id:
-            ids_to_add.add(f"enquiry_{item_id}")
 
     if item_type == "rating":
         if created_at and name:
             ids_to_add.add(f"rating_{created_at}_{name}")
-        if item_id:
-            ids_to_add.add(f"rating_{item_id}")
 
     for val in ids_to_add:
         if val and str(val).strip():
@@ -1001,37 +976,8 @@ def sync_videos_from_cloud(db, deleted_set=None):
 
 
 def sync_from_firestore_to_sqlite(db, force=False):
-    global LAST_FIRESTORE_SYNC
-
-    now_ts = datetime.now().timestamp()
-
-    mongo = get_mongo_db()
-    if not force and mongo is None:
-        if now_ts - LAST_FIRESTORE_SYNC < 3:
-            return
-
-    LAST_FIRESTORE_SYNC = now_ts
-
-    # 1. Always sync deleted_items blacklist from Cloud Storage/MongoDB first
-    sync_deleted_items_from_cloud(db)
-
-    # Fetch updated blacklist of deleted item identifiers
-    deleted_set = set()
-    try:
-        rows_del = db.execute("SELECT identifier FROM deleted_items").fetchall()
-        deleted_set = {r["identifier"] for r in rows_del if r["identifier"]}
-    except Exception:
-        pass
-
-    # 2. Sync enquiries & ratings
-    sync_enquiries_from_cloud(db, deleted_set=deleted_set)
-    sync_ratings_from_cloud(db, deleted_set=deleted_set)
-
-    # 3. Sync photos & videos
-    sync_photos_from_cloud(db, deleted_set=deleted_set)
-    sync_videos_from_cloud(db, deleted_set=deleted_set)
-
-    LAST_FIRESTORE_SYNC = now_ts
+    """Cloud sync disabled. Using local SQLite database as definitive storage."""
+    return
 
 
 
@@ -1280,7 +1226,6 @@ def submit_enquiry():
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db = get_db()
-        sync_enquiries_from_cloud(db)
         cursor = db.execute(
             """
             INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at)
@@ -1289,32 +1234,14 @@ def submit_enquiry():
             (name, phone, email, event_type, event_date, location, message, now),
         )
         db.commit()
-        enquiry_id = cursor.lastrowid
 
-        push_enquiries_to_cloud(db)
-
-        if FIREBASE_DB:
-            try:
-                FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).set({
-                    "id": enquiry_id,
-                    "name": name,
-                    "phone": phone,
-                    "email": email,
-                    "event_type": event_type,
-                    "event_date": event_date,
-                    "location": location,
-                    "message": message,
-                    "created_at": now,
-                    "is_read": False,
-                })
-            except Exception as exc:
-                app.logger.warning("Firestore enquiry save failed: %s", exc)
-
-        notify_owner_new_enquiry({
+        # Asynchronous background thread for instant response (<15ms)
+        enquiry_payload = {
             "name": name, "phone": phone, "email": email,
             "event_type": event_type, "event_date": event_date,
             "location": location, "message": message,
-        })
+        }
+        threading.Thread(target=notify_owner_new_enquiry, args=(enquiry_payload,), daemon=True).start()
     except Exception as exc:
         app.logger.error("Enquiry save error: %s", exc)
         if is_ajax:
@@ -1354,28 +1281,11 @@ def submit_rating():
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db = get_db()
-        sync_ratings_from_cloud(db)
         cursor = db.execute(
             "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, 0)",
             (name, stars_int, comment, now),
         )
         db.commit()
-        rating_id = cursor.lastrowid
-
-        push_ratings_to_cloud(db)
-
-        if FIREBASE_DB:
-            try:
-                FIREBASE_DB.collection("ratings").document(str(rating_id)).set({
-                    "id": rating_id,
-                    "name": name,
-                    "stars": stars_int,
-                    "comment": comment,
-                    "created_at": now,
-                    "approved": False,
-                })
-            except Exception as exc:
-                app.logger.warning("Firestore rating save failed: %s", exc)
     except Exception as exc:
         app.logger.error("Rating save error: %s", exc)
         if is_ajax:
