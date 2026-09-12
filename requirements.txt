@@ -3,3 +3,5 @@ Werkzeug==3.0.3
 firebase-admin
 cloudinary
 python-dotenv
+pymongo
+dnspython

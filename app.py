@@ -183,6 +183,33 @@ def init_firebase():
         print(f"[Firebase Storage] Notice: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# MongoDB Cloud Database Integration (High-Speed Cloud Database Persistence)
+# ---------------------------------------------------------------------------
+HAS_MONGO = False
+MONGO_DB = None
+MONGO_URI = os.environ.get("MONGO_URI")
+
+def init_mongo():
+    global HAS_MONGO, MONGO_DB, MONGO_URI
+    MONGO_URI = os.environ.get("MONGO_URI")
+    if not MONGO_URI:
+        return
+    try:
+        from pymongo import MongoClient
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        client.admin.command('ping')
+        parsed = urllib.parse.urlparse(MONGO_URI)
+        db_name = parsed.path.lstrip("/").split("?")[0] or "faevents"
+        MONGO_DB = client[db_name]
+        HAS_MONGO = True
+        print(f"[MongoDB Atlas] Connected successfully to Cloud Database: {db_name}")
+    except Exception as exc:
+        print(f"[MongoDB Atlas Notice]: {exc}")
+
+init_mongo()
+
+
 def delete_file_from_cloud(folder, filename=None, cloud_url=None):
     if HAS_CLOUDINARY:
         try:
@@ -230,6 +257,14 @@ def push_enquiries_to_cloud(db, allow_empty=False):
             print("[Push Enquiries Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.enquiries.delete_many({})
+                if data:
+                    MONGO_DB.enquiries.insert_many([dict(d) for d in data])
+            except Exception as exc:
+                print(f"[MongoDB Enquiries Push Error]: {exc}")
+
         if HAS_CLOUDINARY:
             try:
                 import cloudinary.uploader
@@ -261,6 +296,14 @@ def push_ratings_to_cloud(db, allow_empty=False):
         if not data and not allow_empty:
             print("[Push Ratings Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
+
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.ratings.delete_many({})
+                if data:
+                    MONGO_DB.ratings.insert_many([dict(d) for d in data])
+            except Exception as exc:
+                print(f"[MongoDB Ratings Push Error]: {exc}")
 
         if HAS_CLOUDINARY:
             try:
@@ -297,7 +340,15 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
 
     enquiries_list = []
 
-    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+    if HAS_MONGO and MONGO_DB is not None:
+        try:
+            m_docs = list(MONGO_DB.enquiries.find({}, {"_id": 0}))
+            if m_docs:
+                enquiries_list = m_docs
+        except Exception as exc:
+            print(f"[MongoDB Enquiries Sync Error]: {exc}")
+
+    if not enquiries_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request, time
             cb = int(time.time() * 1000)
@@ -403,7 +454,15 @@ def sync_ratings_from_cloud(db, deleted_set=None):
 
     ratings_list = []
 
-    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+    if HAS_MONGO and MONGO_DB is not None:
+        try:
+            m_docs = list(MONGO_DB.ratings.find({}, {"_id": 0}))
+            if m_docs:
+                ratings_list = m_docs
+        except Exception as exc:
+            print(f"[MongoDB Ratings Sync Error]: {exc}")
+
+    if not ratings_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request, time
             cb = int(time.time() * 1000)
@@ -500,6 +559,14 @@ def push_deleted_items_to_cloud(db):
         rows = db.execute("SELECT * FROM deleted_items ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
 
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.deleted_items.delete_many({})
+                if data:
+                    MONGO_DB.deleted_items.insert_many([dict(d) for d in data])
+            except Exception as exc:
+                print(f"[MongoDB Deleted Items Push Error]: {exc}")
+
         if HAS_CLOUDINARY:
             try:
                 import cloudinary.uploader
@@ -525,6 +592,14 @@ def push_photos_to_cloud(db, allow_empty=False):
             print("[Push Photos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
 
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.photos.delete_many({})
+                if data:
+                    MONGO_DB.photos.insert_many([dict(d) for d in data])
+            except Exception as exc:
+                print(f"[MongoDB Photos Push Error]: {exc}")
+
         if HAS_CLOUDINARY:
             try:
                 import cloudinary.uploader
@@ -549,6 +624,14 @@ def push_videos_to_cloud(db, allow_empty=False):
         if not data and not allow_empty:
             print("[Push Videos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
             return
+
+        if HAS_MONGO and MONGO_DB is not None:
+            try:
+                MONGO_DB.videos.delete_many({})
+                if data:
+                    MONGO_DB.videos.insert_many([dict(d) for d in data])
+            except Exception as exc:
+                print(f"[MongoDB Videos Push Error]: {exc}")
 
         if HAS_CLOUDINARY:
             try:
@@ -695,7 +778,16 @@ def is_item_deleted(deleted_set, fn=None, cloud_url=None, embed_url=None, public
 
 def sync_deleted_items_from_cloud(db):
     deleted_list = []
-    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+
+    if HAS_MONGO and MONGO_DB is not None:
+        try:
+            m_docs = list(MONGO_DB.deleted_items.find({}, {"_id": 0}))
+            if m_docs:
+                deleted_list = m_docs
+        except Exception as exc:
+            print(f"[MongoDB Deleted Items Sync Error]: {exc}")
+
+    if not deleted_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request, time
             cb = int(time.time() * 1000)
@@ -740,7 +832,16 @@ def sync_photos_from_cloud(db, deleted_set=None):
         pass
 
     photos_list = []
-    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+
+    if HAS_MONGO and MONGO_DB is not None:
+        try:
+            m_docs = list(MONGO_DB.photos.find({}, {"_id": 0}))
+            if m_docs:
+                photos_list = m_docs
+        except Exception as exc:
+            print(f"[MongoDB Photos Sync Error]: {exc}")
+
+    if not photos_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request, time
             cb = int(time.time() * 1000)
@@ -806,7 +907,16 @@ def sync_videos_from_cloud(db, deleted_set=None):
         pass
 
     videos_list = []
-    if HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+
+    if HAS_MONGO and MONGO_DB is not None:
+        try:
+            m_docs = list(MONGO_DB.videos.find({}, {"_id": 0}))
+            if m_docs:
+                videos_list = m_docs
+        except Exception as exc:
+            print(f"[MongoDB Videos Sync Error]: {exc}")
+
+    if not videos_list and HAS_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
         try:
             import urllib.request, time
             cb = int(time.time() * 1000)
