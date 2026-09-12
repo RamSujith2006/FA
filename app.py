@@ -303,7 +303,7 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
             cb = int(datetime.now().timestamp())
             raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/enquiries.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     enquiries_list = json.loads(resp.read().decode("utf-8"))
         except Exception:
@@ -382,7 +382,7 @@ def sync_ratings_from_cloud(db, deleted_set=None):
             cb = int(datetime.now().timestamp())
             raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/ratings.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     ratings_list = json.loads(resp.read().decode("utf-8"))
         except Exception:
@@ -572,7 +572,7 @@ def sync_deleted_items_from_cloud(db):
             cb = int(datetime.now().timestamp())
             raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/deleted_items.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     deleted_list = json.loads(resp.read().decode("utf-8"))
         except Exception:
@@ -610,7 +610,7 @@ def sync_photos_from_cloud(db, deleted_set=None):
             cb = int(datetime.now().timestamp())
             raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/photos.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     photos_list = json.loads(resp.read().decode("utf-8"))
         except Exception:
@@ -660,7 +660,7 @@ def sync_videos_from_cloud(db, deleted_set=None):
             cb = int(datetime.now().timestamp())
             raw_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/fa-events/data/videos.json?_cb={cb}"
             req = urllib.request.Request(raw_url, headers={"User-Agent": "FAEventsApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     videos_list = json.loads(resp.read().decode("utf-8"))
         except Exception:
