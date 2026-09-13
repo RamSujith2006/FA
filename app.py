@@ -287,38 +287,26 @@ def push_enquiries_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM enquiries ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
-        if not data and not allow_empty:
-            print("[Push Enquiries Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+        if not data:
             return
 
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                if allow_empty:
-                    # Full replace: wipe MongoDB collection and re-insert remaining
-                    # This guarantees MongoDB matches SQLite exactly after deletions
-                    mongo.enquiries.delete_many({})
-                    if data:
-                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
-                        mongo.enquiries.insert_many(clean_data)
-                    print(f"[MongoDB Enquiries Full Replace]: {len(data)} items synced")
-                else:
-                    # Normal upsert for add operations
-                    for d in data:
-                        item_id = d.get("id")
-                        created_at = d.get("created_at")
-                        phone = d.get("phone")
-                        name = d.get("name")
-                        if created_at and phone:
-                            mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, d, upsert=True)
-                        elif item_id:
-                            mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
-                        else:
-                            mongo.enquiries.replace_one({"phone": phone, "name": name}, d, upsert=True)
+                for d in data:
+                    item_id = d.get("id")
+                    created_at = d.get("created_at")
+                    phone = d.get("phone")
+                    name = d.get("name")
+                    clean_d = {k: v for k, v in d.items() if k != '_id'}
+                    if item_id:
+                        mongo.enquiries.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
+                    elif created_at and phone:
+                        mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, clean_d, upsert=True)
+                    else:
+                        mongo.enquiries.replace_one({"phone": phone, "name": name}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
-
-
 
         if FIREBASE_DB:
             for item in data:
@@ -334,36 +322,25 @@ def push_ratings_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM ratings ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
-        if not data and not allow_empty:
-            print("[Push Ratings Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+        if not data:
             return
 
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                if allow_empty:
-                    # Full replace: wipe MongoDB collection and re-insert remaining
-                    mongo.ratings.delete_many({})
-                    if data:
-                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
-                        mongo.ratings.insert_many(clean_data)
-                    print(f"[MongoDB Ratings Full Replace]: {len(data)} items synced")
-                else:
-                    # Normal upsert for add operations
-                    for d in data:
-                        item_id = d.get("id")
-                        created_at = d.get("created_at")
-                        name = d.get("name")
-                        if created_at and name:
-                            mongo.ratings.replace_one({"created_at": created_at, "name": name}, d, upsert=True)
-                        elif item_id:
-                            mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
-                        else:
-                            mongo.ratings.replace_one({"name": name}, d, upsert=True)
+                for d in data:
+                    item_id = d.get("id")
+                    created_at = d.get("created_at")
+                    name = d.get("name")
+                    clean_d = {k: v for k, v in d.items() if k != '_id'}
+                    if item_id:
+                        mongo.ratings.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
+                    elif created_at and name:
+                        mongo.ratings.replace_one({"created_at": created_at, "name": name}, clean_d, upsert=True)
+                    else:
+                        mongo.ratings.replace_one({"name": name}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
-
-
 
         if FIREBASE_DB:
             for item in data:
@@ -380,29 +357,35 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
     if mongo is not None:
         try:
             m_docs = list(mongo.enquiries.find({}, {"_id": 0}))
-            db.execute("DELETE FROM enquiries")
-            for d in m_docs:
-                db.execute(
-                    """
-                    INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read, photos)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        d.get("id"),
-                        d.get("name") or "",
-                        d.get("phone") or "",
-                        d.get("email") or "",
-                        d.get("event_type") or "",
-                        d.get("event_date") or "",
-                        d.get("location") or "",
-                        d.get("message") or "",
-                        d.get("created_at") or "2026-01-01 00:00:00",
-                        1 if d.get("is_read") else 0,
-                        d.get("photos") or None
+            if m_docs:
+                db.execute("DELETE FROM enquiries")
+                for d in m_docs:
+                    db.execute(
+                        """
+                        INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read, photos)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            d.get("id"),
+                            d.get("name") or "",
+                            d.get("phone") or "",
+                            d.get("email") or "",
+                            d.get("event_type") or "",
+                            d.get("event_date") or "",
+                            d.get("location") or "",
+                            d.get("message") or "",
+                            d.get("created_at") or "2026-01-01 00:00:00",
+                            1 if d.get("is_read") else 0,
+                            d.get("photos") or None
+                        )
                     )
-                )
-            db.commit()
-            return
+                db.commit()
+                return
+            else:
+                local_cnt = db.execute("SELECT COUNT(*) c FROM enquiries").fetchone()["c"]
+                if local_cnt > 0:
+                    push_enquiries_to_cloud(db)
+                return
         except Exception as exc:
             print(f"[MongoDB Enquiries Sync Error]: {exc}")
 
@@ -477,30 +460,36 @@ def sync_ratings_from_cloud(db, deleted_set=None):
     if mongo is not None:
         try:
             m_docs = list(mongo.ratings.find({}, {"_id": 0}))
-            db.execute("DELETE FROM ratings")
-            for d in m_docs:
-                stars = d.get("stars", 5)
-                try:
-                    stars = int(stars)
-                except (ValueError, TypeError):
-                    stars = 5
-                db.execute(
-                    """
-                    INSERT INTO ratings (id, name, stars, comment, created_at, approved, photos)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        d.get("id"),
-                        d.get("name") or "",
-                        stars,
-                        d.get("comment") or "",
-                        d.get("created_at") or "2026-01-01 00:00:00",
-                        1 if d.get("approved") else 0,
-                        d.get("photos") or None
+            if m_docs:
+                db.execute("DELETE FROM ratings")
+                for d in m_docs:
+                    stars = d.get("stars", 5)
+                    try:
+                        stars = int(stars)
+                    except (ValueError, TypeError):
+                        stars = 5
+                    db.execute(
+                        """
+                        INSERT INTO ratings (id, name, stars, comment, created_at, approved, photos)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            d.get("id"),
+                            d.get("name") or "",
+                            stars,
+                            d.get("comment") or "",
+                            d.get("created_at") or "2026-01-01 00:00:00",
+                            1 if d.get("approved") else 0,
+                            d.get("photos") or None
+                        )
                     )
-                )
-            db.commit()
-            return
+                db.commit()
+                return
+            else:
+                local_cnt = db.execute("SELECT COUNT(*) c FROM ratings").fetchone()["c"]
+                if local_cnt > 0:
+                    push_ratings_to_cloud(db)
+                return
         except Exception as exc:
             print(f"[MongoDB Ratings Sync Error]: {exc}")
 
@@ -594,33 +583,25 @@ def push_photos_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM photos ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
-        if not data and not allow_empty:
-            print("[Push Photos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+        if not data:
             return
 
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                if allow_empty:
-                    # Full replace: wipe MongoDB collection and re-insert remaining
-                    mongo.photos.delete_many({})
-                    if data:
-                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
-                        mongo.photos.insert_many(clean_data)
-                    print(f"[MongoDB Photos Full Replace]: {len(data)} items synced")
-                else:
-                    # Normal upsert for add operations
-                    for d in data:
-                        item_id = d.get("id")
-                        fn = d.get("filename")
-                        if item_id:
-                            mongo.photos.replace_one({"id": item_id}, d, upsert=True)
-                        elif fn:
-                            mongo.photos.replace_one({"filename": fn}, d, upsert=True)
+                for d in data:
+                    item_id = d.get("id")
+                    fn = d.get("filename")
+                    c_url = d.get("cloud_url")
+                    clean_d = {k: v for k, v in d.items() if k != '_id'}
+                    if item_id:
+                        mongo.photos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
+                    elif c_url:
+                        mongo.photos.replace_one({"cloud_url": c_url}, clean_d, upsert=True)
+                    elif fn:
+                        mongo.photos.replace_one({"filename": fn}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
-
-
     except Exception as exc:
         print(f"[Push Photos Error]: {exc}")
 
@@ -629,41 +610,40 @@ def push_videos_to_cloud(db, allow_empty=False):
     try:
         rows = db.execute("SELECT * FROM videos ORDER BY id ASC").fetchall()
         data = [dict(r) for r in rows]
-        if not data and not allow_empty:
-            print("[Push Videos Notice]: Local DB is empty, skipping cloud overwrite to protect long-term storage.")
+        if not data:
             return
 
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                if allow_empty:
-                    # Full replace: wipe MongoDB collection and re-insert remaining
-                    mongo.videos.delete_many({})
-                    if data:
-                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
-                        mongo.videos.insert_many(clean_data)
-                    print(f"[MongoDB Videos Full Replace]: {len(data)} items synced")
-                else:
-                    # Normal upsert for add operations
-                    for d in data:
-                        item_id = d.get("id")
-                        fn = d.get("filename")
-                        cloud_url = d.get("cloud_url")
-                        if item_id:
-                            mongo.videos.replace_one({"id": item_id}, d, upsert=True)
-                        elif fn:
-                            mongo.videos.replace_one({"filename": fn}, d, upsert=True)
-                        elif cloud_url:
-                            mongo.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
+                for d in data:
+                    item_id = d.get("id")
+                    fn = d.get("filename")
+                    cloud_url = d.get("cloud_url")
+                    embed_url = d.get("embed_url")
+                    clean_d = {k: v for k, v in d.items() if k != '_id'}
+                    if item_id:
+                        mongo.videos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
+                    elif cloud_url:
+                        mongo.videos.replace_one({"cloud_url": cloud_url}, clean_d, upsert=True)
+                    elif embed_url:
+                        mongo.videos.replace_one({"embed_url": embed_url}, clean_d, upsert=True)
+                    elif fn:
+                        mongo.videos.replace_one({"filename": fn}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
-
-
     except Exception as exc:
         print(f"[Push Videos Error]: {exc}")
 
 
 import re
+
+GENERIC_MEDIA_WORDS = {
+    "photo", "photos", "video", "videos", "image", "images",
+    "all", "unknown", "none", "null", "test", "demo", "sample",
+    "media", "upload", "uploads", "admin", "fa-events",
+    "fa-events/photos", "fa-events/videos"
+}
 
 def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, embed_url=None, phone=None, name=None, created_at=None):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -672,42 +652,42 @@ def record_deleted_identifiers(db, item_type, item_id, fn=None, cloud_url=None, 
     if item_id:
         ids_to_add.add(f"{item_type}_{item_id}")
 
-    if fn:
-        ids_to_add.add(fn)
+    if fn and str(fn).strip().lower() not in GENERIC_MEDIA_WORDS and len(str(fn).strip()) >= 4:
+        ids_to_add.add(str(fn).strip())
         if "." in fn:
-            ids_to_add.add(fn.rsplit(".", 1)[0])
+            base_no_ext = fn.rsplit(".", 1)[0].strip()
+            if base_no_ext.lower() not in GENERIC_MEDIA_WORDS and len(base_no_ext) >= 4:
+                ids_to_add.add(base_no_ext)
 
-    if cloud_url:
+    if cloud_url and str(cloud_url).strip().startswith("http"):
         ids_to_add.add(cloud_url)
         clean_url = cloud_url.split("?")[0]
         ids_to_add.add(clean_url)
-        if clean_url.startswith("https://"):
-            ids_to_add.add("http://" + clean_url[8:])
-        elif clean_url.startswith("http://"):
-            ids_to_add.add("https://" + clean_url[7:])
 
         if "fa-events/" in clean_url:
             pub = clean_url.split("fa-events/")[-1]
-            ids_to_add.add("fa-events/" + pub)
-            ids_to_add.add("fa-events/" + pub.rsplit(".", 1)[0])
+            if pub.lower() not in GENERIC_MEDIA_WORDS and len(pub) >= 4:
+                ids_to_add.add("fa-events/" + pub)
+                pub_no_ext = pub.rsplit(".", 1)[0]
+                if pub_no_ext.lower() not in GENERIC_MEDIA_WORDS and len(pub_no_ext) >= 4:
+                    ids_to_add.add("fa-events/" + pub_no_ext)
 
-    if embed_url:
+    if embed_url and len(embed_url) >= 8:
         ids_to_add.add(embed_url)
 
-    if item_type == "enquiry":
-        if created_at and phone:
-            ids_to_add.add(f"enquiry_{created_at}_{phone}")
+    if item_type == "enquiry" and item_id:
+        ids_to_add.add(f"enquiry_{item_id}")
 
-    if item_type == "rating":
-        if created_at and name:
-            ids_to_add.add(f"rating_{created_at}_{name}")
+    if item_type == "rating" and item_id:
+        ids_to_add.add(f"rating_{item_id}")
 
     for val in ids_to_add:
-        if val and str(val).strip():
+        v_str = str(val).strip()
+        if v_str and len(v_str) >= 4 and v_str.lower() not in GENERIC_MEDIA_WORDS:
             try:
                 db.execute(
                     "INSERT OR IGNORE INTO deleted_items (item_type, identifier, created_at) VALUES (?, ?, ?)",
-                    (item_type, str(val).strip(), now)
+                    (item_type, v_str, now)
                 )
             except Exception:
                 pass
@@ -718,7 +698,7 @@ def normalize_media_identifier(ident):
     if not ident:
         return set()
     ident = str(ident).strip()
-    if not ident:
+    if not ident or len(ident) < 4 or ident.lower() in GENERIC_MEDIA_WORDS:
         return set()
 
     variations = {ident, ident.lower()}
@@ -728,21 +708,24 @@ def normalize_media_identifier(ident):
     variations.add(clean.lower())
 
     basename = clean.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-    if basename:
+    if basename and basename.lower() not in GENERIC_MEDIA_WORDS and len(basename) >= 4:
         variations.add(basename)
         variations.add(basename.lower())
         if "." in basename:
             no_ext = basename.rsplit(".", 1)[0]
-            variations.add(no_ext)
-            variations.add(no_ext.lower())
+            if no_ext.lower() not in GENERIC_MEDIA_WORDS and len(no_ext) >= 4:
+                variations.add(no_ext)
+                variations.add(no_ext.lower())
 
     if "fa-events/" in clean:
         pub = clean.split("fa-events/")[-1]
-        variations.add("fa-events/" + pub)
-        variations.add(("fa-events/" + pub).lower())
-        pub_no_ext = pub.rsplit(".", 1)[0]
-        variations.add("fa-events/" + pub_no_ext)
-        variations.add(("fa-events/" + pub_no_ext).lower())
+        if pub.lower() not in GENERIC_MEDIA_WORDS and len(pub) >= 4:
+            variations.add("fa-events/" + pub)
+            variations.add(("fa-events/" + pub).lower())
+            pub_no_ext = pub.rsplit(".", 1)[0]
+            if pub_no_ext.lower() not in GENERIC_MEDIA_WORDS and len(pub_no_ext) >= 4:
+                variations.add("fa-events/" + pub_no_ext)
+                variations.add(("fa-events/" + pub_no_ext).lower())
 
     no_ver = re.sub(r'/v\d+/', '/', clean)
     variations.add(no_ver)
@@ -756,7 +739,7 @@ def normalize_media_identifier(ident):
     variations.add(no_proto_ver)
     variations.add(no_proto_ver.lower())
 
-    return variations
+    return {v for v in variations if len(v) >= 4 and v.lower() not in GENERIC_MEDIA_WORDS}
 
 
 def is_item_deleted(deleted_set, fn=None, cloud_url=None, embed_url=None, public_id=None):
@@ -814,24 +797,30 @@ def sync_photos_from_cloud(db, deleted_set=None):
     if mongo is not None:
         try:
             m_docs = list(mongo.photos.find({}, {"_id": 0}))
-            db.execute("DELETE FROM photos")
-            for d in m_docs:
-                db.execute(
-                    """
-                    INSERT INTO photos (id, filename, cloud_url, caption, category, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        d.get("id"),
-                        d.get("filename") or "",
-                        d.get("cloud_url") or "",
-                        d.get("caption") or "",
-                        d.get("category") or "",
-                        d.get("created_at") or "2026-01-01 00:00:00"
+            if m_docs:
+                db.execute("DELETE FROM photos")
+                for d in m_docs:
+                    db.execute(
+                        """
+                        INSERT INTO photos (id, filename, cloud_url, caption, category, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            d.get("id"),
+                            d.get("filename") or "",
+                            d.get("cloud_url") or "",
+                            d.get("caption") or "",
+                            d.get("category") or "",
+                            d.get("created_at") or "2026-01-01 00:00:00"
+                        )
                     )
-                )
-            db.commit()
-            return
+                db.commit()
+                return
+            else:
+                local_cnt = db.execute("SELECT COUNT(*) c FROM photos").fetchone()["c"]
+                if local_cnt > 0:
+                    push_photos_to_cloud(db)
+                return
         except Exception as exc:
             print(f"[MongoDB Photos Sync Error]: {exc}")
 
@@ -887,25 +876,31 @@ def sync_videos_from_cloud(db, deleted_set=None):
     if mongo is not None:
         try:
             m_docs = list(mongo.videos.find({}, {"_id": 0}))
-            db.execute("DELETE FROM videos")
-            for d in m_docs:
-                db.execute(
-                    """
-                    INSERT INTO videos (id, filename, cloud_url, embed_url, caption, category, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        d.get("id"),
-                        d.get("filename") or "",
-                        d.get("cloud_url") or "",
-                        d.get("embed_url") or "",
-                        d.get("caption") or "",
-                        d.get("category") or "",
-                        d.get("created_at") or "2026-01-01 00:00:00"
+            if m_docs:
+                db.execute("DELETE FROM videos")
+                for d in m_docs:
+                    db.execute(
+                        """
+                        INSERT INTO videos (id, filename, cloud_url, embed_url, caption, category, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            d.get("id"),
+                            d.get("filename") or "",
+                            d.get("cloud_url") or "",
+                            d.get("embed_url") or "",
+                            d.get("caption") or "",
+                            d.get("category") or "",
+                            d.get("created_at") or "2026-01-01 00:00:00"
+                        )
                     )
-                )
-            db.commit()
-            return
+                db.commit()
+                return
+            else:
+                local_cnt = db.execute("SELECT COUNT(*) c FROM videos").fetchone()["c"]
+                if local_cnt > 0:
+                    push_videos_to_cloud(db)
+                return
         except Exception as exc:
             print(f"[MongoDB Videos Sync Error]: {exc}")
 
@@ -1493,16 +1488,22 @@ def bg_cloud_sync(action_type, **kwargs):
     try:
         with sqlite3.connect(DB_PATH) as db:
             db.row_factory = sqlite3.Row
+            mongo = get_mongo_db()
             if action_type == "delete_photo":
                 fn = kwargs.get("fn")
                 c_url = kwargs.get("c_url")
+                photo_id = kwargs.get("photo_id")
+                if mongo is not None:
+                    if photo_id:
+                        mongo.photos.delete_one({"$or": [{"id": photo_id}, {"id": str(photo_id)}]})
+                    elif c_url:
+                        mongo.photos.delete_one({"cloud_url": c_url})
                 delete_file_from_cloud("photos", fn, cloud_url=c_url)
                 if FIREBASE_DB and fn:
                     try:
                         FIREBASE_DB.collection("photos").document(fn).delete()
                     except Exception:
                         pass
-                push_photos_to_cloud(db, allow_empty=True)
                 push_deleted_items_to_cloud(db)
 
             elif action_type == "delete_video":
@@ -1510,6 +1511,11 @@ def bg_cloud_sync(action_type, **kwargs):
                 c_url = kwargs.get("c_url")
                 embed = kwargs.get("embed")
                 video_id = kwargs.get("video_id")
+                if mongo is not None:
+                    if video_id:
+                        mongo.videos.delete_one({"$or": [{"id": video_id}, {"id": str(video_id)}]})
+                    elif c_url:
+                        mongo.videos.delete_one({"cloud_url": c_url})
                 delete_file_from_cloud("videos", fn, cloud_url=c_url)
                 if FIREBASE_DB:
                     try:
@@ -1517,12 +1523,12 @@ def bg_cloud_sync(action_type, **kwargs):
                         FIREBASE_DB.collection("videos").document(doc_id).delete()
                     except Exception:
                         pass
-                push_videos_to_cloud(db, allow_empty=True)
                 push_deleted_items_to_cloud(db)
 
             elif action_type == "delete_enquiry":
                 enquiry_id = kwargs.get("enquiry_id")
-                push_enquiries_to_cloud(db, allow_empty=True)
+                if mongo is not None and enquiry_id:
+                    mongo.enquiries.delete_one({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
                 push_deleted_items_to_cloud(db)
                 if FIREBASE_DB and enquiry_id:
                     try:
@@ -1532,7 +1538,8 @@ def bg_cloud_sync(action_type, **kwargs):
 
             elif action_type == "delete_rating":
                 rating_id = kwargs.get("rating_id")
-                push_ratings_to_cloud(db, allow_empty=True)
+                if mongo is not None and rating_id:
+                    mongo.ratings.delete_one({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
                 push_deleted_items_to_cloud(db)
                 if FIREBASE_DB and rating_id:
                     try:
@@ -1589,13 +1596,13 @@ def bg_cloud_push(target):
         with sqlite3.connect(DB_PATH) as db:
             db.row_factory = sqlite3.Row
             if target == "enquiry":
-                push_enquiries_to_cloud(db, allow_empty=True)
+                push_enquiries_to_cloud(db)
             elif target == "rating":
-                push_ratings_to_cloud(db, allow_empty=True)
+                push_ratings_to_cloud(db)
             elif target == "photo":
-                push_photos_to_cloud(db, allow_empty=True)
+                push_photos_to_cloud(db)
             elif target == "video":
-                push_videos_to_cloud(db, allow_empty=True)
+                push_videos_to_cloud(db)
     except Exception as exc:
         print(f"[BG Cloud Push Notice]: {exc}")
 
@@ -1918,15 +1925,9 @@ def api_cloud_storage_delete():
 
             if mongo is not None:
                 try:
-                    conds = []
-                    if p_id:
-                        conds.extend([{"id": p_id}, {"id": str(p_id)}])
-                    if fn:
-                        conds.append({"filename": fn})
-                    if c_url:
-                        conds.append({"cloud_url": c_url})
-                    if conds:
-                        mongo.photos.delete_many({"$or": conds})
+                    mongo.photos.delete_one({"$or": [{"id": p_id}, {"id": str(p_id)}]})
+                    if c_url and c_url.startswith("http"):
+                        mongo.photos.delete_one({"cloud_url": c_url})
                 except Exception:
                     pass
 
@@ -1946,7 +1947,6 @@ def api_cloud_storage_delete():
                     FIREBASE_DB.collection("photos").document(fn).delete()
                 except Exception:
                     pass
-            push_photos_to_cloud(db, allow_empty=True)
             push_deleted_items_to_cloud(db)
             deleted = True
 
@@ -1966,17 +1966,9 @@ def api_cloud_storage_delete():
 
             if mongo is not None:
                 try:
-                    conds = []
-                    if v_id:
-                        conds.extend([{"id": v_id}, {"id": str(v_id)}])
-                    if fn:
-                        conds.append({"filename": fn})
-                    if c_url:
-                        conds.append({"cloud_url": c_url})
-                    if embed:
-                        conds.append({"embed_url": embed})
-                    if conds:
-                        mongo.videos.delete_many({"$or": conds})
+                    mongo.videos.delete_one({"$or": [{"id": v_id}, {"id": str(v_id)}]})
+                    if c_url and c_url.startswith("http"):
+                        mongo.videos.delete_one({"cloud_url": c_url})
                 except Exception:
                     pass
 
@@ -1998,7 +1990,6 @@ def api_cloud_storage_delete():
                     FIREBASE_DB.collection("videos").document(doc_id).delete()
                 except Exception:
                     pass
-            push_videos_to_cloud(db, allow_empty=True)
             push_deleted_items_to_cloud(db)
             deleted = True
 
@@ -2078,20 +2069,11 @@ def delete_enquiry(enquiry_id):
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            conds = [{"id": enquiry_id}, {"id": str(enquiry_id)}]
-            if row:
-                if row["created_at"] and row["phone"]:
-                    conds.append({"created_at": row["created_at"], "phone": row["phone"]})
-                if row["created_at"]:
-                    conds.append({"created_at": row["created_at"]})
-                if row["phone"]:
-                    conds.append({"phone": row["phone"]})
-            mongo.enquiries.delete_many({"$or": conds})
+            mongo.enquiries.delete_one({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
         except Exception as exc:
             print(f"[Mongo Enquiry Delete Warning]: {exc}")
     db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
     db.commit()
-    push_enquiries_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
     if row:
         record_deleted_identifiers(db, "enquiry", enquiry_id, phone=row["phone"], name=row["name"], created_at=row["created_at"])
@@ -2243,10 +2225,6 @@ def delete_photo(photo_id):
         p_id = row["id"]
 
     db.execute("DELETE FROM photos WHERE id = ?", (p_id,))
-    if fn:
-        db.execute("DELETE FROM photos WHERE filename = ?", (fn,))
-    if c_url:
-        db.execute("DELETE FROM photos WHERE cloud_url = ?", (c_url,))
     db.commit()
 
     record_deleted_identifiers(db, "photo", p_id, fn=fn, cloud_url=c_url)
@@ -2254,19 +2232,12 @@ def delete_photo(photo_id):
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            conds = []
-            if p_id:
-                conds.extend([{"id": p_id}, {"id": str(p_id)}])
-            if fn:
-                conds.append({"filename": fn})
-            if c_url:
-                conds.append({"cloud_url": c_url})
-            if conds:
-                mongo.photos.delete_many({"$or": conds})
+            mongo.photos.delete_one({"$or": [{"id": p_id}, {"id": str(p_id)}]})
+            if c_url and c_url.startswith("http"):
+                mongo.photos.delete_one({"cloud_url": c_url})
         except Exception:
             pass
 
-    push_photos_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
 
     if fn:
@@ -2402,12 +2373,6 @@ def delete_video(video_id):
         v_id = row["id"]
 
     db.execute("DELETE FROM videos WHERE id = ?", (v_id,))
-    if fn:
-        db.execute("DELETE FROM videos WHERE filename = ?", (fn,))
-    if c_url:
-        db.execute("DELETE FROM videos WHERE cloud_url = ?", (c_url,))
-    if embed:
-        db.execute("DELETE FROM videos WHERE embed_url = ?", (embed,))
     db.commit()
 
     record_deleted_identifiers(db, "video", v_id, fn=fn, cloud_url=c_url, embed_url=embed)
@@ -2415,21 +2380,12 @@ def delete_video(video_id):
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            conds = []
-            if v_id:
-                conds.extend([{"id": v_id}, {"id": str(v_id)}])
-            if fn:
-                conds.append({"filename": fn})
-            if c_url:
-                conds.append({"cloud_url": c_url})
-            if embed:
-                conds.append({"embed_url": embed})
-            if conds:
-                mongo.videos.delete_many({"$or": conds})
+            mongo.videos.delete_one({"$or": [{"id": v_id}, {"id": str(v_id)}]})
+            if c_url and c_url.startswith("http"):
+                mongo.videos.delete_one({"cloud_url": c_url})
         except Exception:
             pass
 
-    push_videos_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
 
     if fn:
@@ -2479,20 +2435,11 @@ def delete_rating(rating_id):
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            conds = [{"id": rating_id}, {"id": str(rating_id)}]
-            if row:
-                if row["created_at"] and row["name"]:
-                    conds.append({"created_at": row["created_at"], "name": row["name"]})
-                if row["created_at"]:
-                    conds.append({"created_at": row["created_at"]})
-                if row["name"]:
-                    conds.append({"name": row["name"]})
-            mongo.ratings.delete_many({"$or": conds})
+            mongo.ratings.delete_one({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
         except Exception as exc:
             print(f"[Mongo Rating Delete Warning]: {exc}")
     db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
     db.commit()
-    push_ratings_to_cloud(db, allow_empty=True)
     push_deleted_items_to_cloud(db)
     if row:
         record_deleted_identifiers(db, "rating", rating_id, name=row["name"], created_at=row["created_at"])
