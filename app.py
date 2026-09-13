@@ -1166,6 +1166,12 @@ def favicon():
     )
 
 
+@app.route("/google<string:code>.html")
+def google_verification(code):
+    return f"google-site-verification: google{code}.html", 200, {"Content-Type": "text/html"}
+
+
+
 @app.route("/")
 def index():
     db = get_db()
