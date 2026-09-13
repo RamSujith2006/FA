@@ -99,6 +99,20 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FA_SECRET_KEY", "change-this-secret-key-in-production")
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+
+@app.context_processor
+def inject_now():
+    return {"now": int(datetime.utcnow().timestamp())}
+
+
+@app.after_request
+def add_cache_control_headers(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Business info — edit these to update the site's contact details & SEO
 # ---------------------------------------------------------------------------

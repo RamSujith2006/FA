@@ -1,4 +1,16 @@
 document.addEventListener("DOMContentLoaded", () => {
+  /* ---------- Clear Browser & Service Worker Cache ---------- */
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (let reg of registrations) reg.unregister();
+    }).catch(() => {});
+  }
+  if ("caches" in window) {
+    caches.keys().then((names) => {
+      for (let name of names) caches.delete(name);
+    }).catch(() => {});
+  }
+
   /* ---------- mobile nav ---------- */
   const navToggle = document.querySelector(".nav-toggle");
   if (navToggle) {
@@ -255,8 +267,8 @@ async function loadCloudStorageFiles() {
   container.innerHTML = `<div class="cs-loading-spinner">⚡ Loading Cloud Storage files...</div>`;
 
   try {
-    const url = `/admin/api/cloud-storage/files?folder=${encodeURIComponent(currentCloudFolder)}&q=${encodeURIComponent(currentCloudQuery)}`;
-    const res = await fetch(url);
+    const url = `/admin/api/cloud-storage/files?folder=${encodeURIComponent(currentCloudFolder)}&q=${encodeURIComponent(currentCloudQuery)}&_t=${Date.now()}`;
+    const res = await fetch(url, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
     const data = await res.json();
     cloudFilesData = data.files || [];
     renderCloudFiles(cloudFilesData);
