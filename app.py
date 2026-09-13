@@ -600,12 +600,12 @@ def push_photos_to_cloud(db, allow_empty=False):
                     fn = d.get("filename")
                     c_url = d.get("cloud_url")
                     clean_d = {k: v for k, v in d.items() if k != '_id'}
-                    if item_id:
-                        mongo.photos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
-                    elif c_url:
+                    if c_url:
                         mongo.photos.replace_one({"cloud_url": c_url}, clean_d, upsert=True)
                     elif fn:
                         mongo.photos.replace_one({"filename": fn}, clean_d, upsert=True)
+                    elif item_id:
+                        mongo.photos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
     except Exception as exc:
@@ -628,14 +628,14 @@ def push_videos_to_cloud(db, allow_empty=False):
                     cloud_url = d.get("cloud_url")
                     embed_url = d.get("embed_url")
                     clean_d = {k: v for k, v in d.items() if k != '_id'}
-                    if item_id:
-                        mongo.videos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
-                    elif cloud_url:
+                    if cloud_url:
                         mongo.videos.replace_one({"cloud_url": cloud_url}, clean_d, upsert=True)
                     elif embed_url:
                         mongo.videos.replace_one({"embed_url": embed_url}, clean_d, upsert=True)
                     elif fn:
                         mongo.videos.replace_one({"filename": fn}, clean_d, upsert=True)
+                    elif item_id:
+                        mongo.videos.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
     except Exception as exc:
@@ -1225,7 +1225,7 @@ def google_verify_12():
 @app.route("/")
 def index():
     db = get_db()
-    sync_from_firestore_to_sqlite(db)
+    sync_from_firestore_to_sqlite(db, force=True)
     photos = db.execute("SELECT * FROM photos ORDER BY created_at DESC").fetchall()
     videos = db.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
 
@@ -2179,6 +2179,7 @@ def upload_photo():
         return redirect(url_for("admin_dashboard") + "#gallery")
 
     db = get_db()
+    sync_photos_from_cloud(db)
     for item in uploaded_records:
         db.execute(
             "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -2315,6 +2316,7 @@ def upload_video():
         return redirect(url_for("admin_dashboard") + "#videos")
 
     db = get_db()
+    sync_videos_from_cloud(db)
     for item in uploaded_records:
         db.execute(
             "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",

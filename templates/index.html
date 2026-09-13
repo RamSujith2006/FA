@@ -303,12 +303,12 @@
         <div class="video-card">
           <div class="video-frame">
             {% if v.filename or v.cloud_url %}
-              <video controls preload="metadata" src="{{ v.cloud_url or url_for('static', filename='uploads/videos/' + v.filename) }}"></video>
+              <video controls preload="metadata" playsinline {% if v.cloud_url and '.mp4' in v.cloud_url %}poster="{{ v.cloud_url.replace('.mp4', '.jpg') }}"{% endif %} src="{{ v.cloud_url or url_for('static', filename='uploads/videos/' + v.filename) }}"></video>
             {% elif v.embed_url %}
               <iframe src="{{ v.embed_url }}" loading="lazy" allowfullscreen title="{{ v.caption or 'FA Events video' }}"></iframe>
             {% endif %}
           </div>
-          {% if v.caption %}<figcaption>{{ v.caption }}</figcaption>{% endif %}
+          <figcaption>{{ v.caption or v.category or 'FA Events Highlight' }}</figcaption>
         </div>
         {% endfor %}
       </div>
