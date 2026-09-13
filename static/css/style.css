@@ -795,8 +795,25 @@ main {
 .admin-main { flex: 1; background: var(--bg-dark); padding: 44px 0 70px; }
 .admin-tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; border-bottom: 1px solid var(--line); }
 .admin-tabs a {
-  padding: 10px 20px; font-size: 0.9rem; color: var(--ink-soft);
+  padding: 11px 22px; font-size: 0.92rem; color: var(--ink-soft);
   border-bottom: 2px solid transparent;
+  text-decoration: none;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  background: transparent;
+}
+.admin-tabs a:hover {
+  color: var(--gold-light);
+  background: rgba(212, 175, 55, 0.05);
+}
+.admin-tabs a.active {
+  color: var(--gold);
+  border-bottom: 2px solid var(--gold);
+  background: rgba(212, 175, 55, 0.12);
+  font-weight: 600;
 }
 .admin-tabs a.badge-live { position: relative; }
 .count-pill {
@@ -807,12 +824,33 @@ main {
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 18px; margin-bottom: 38px; }
 .stat-card {
   background: var(--bg-dark-card); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 22px;
+  padding: 22px; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 .stat-card strong { display: block; font-family: "Cormorant Garamond", serif; font-size: 2rem; color: var(--gold-light); }
 .stat-card span { font-size: 0.84rem; color: var(--ink-soft); }
 
-.admin-panel { background: var(--bg-dark-card); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; margin-bottom: 32px; }
+.admin-panel {
+  display: none;
+  background: var(--bg-dark-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px;
+  margin-bottom: 32px;
+  animation: adminPanelFade 0.22s ease-in-out;
+}
+.admin-panel.active {
+  display: block;
+}
+
+@keyframes adminPanelFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .admin-panel h3 { margin-bottom: 20px; color: var(--gold-light); }
 
 .enquiry-item {

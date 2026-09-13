@@ -33,23 +33,23 @@
       {% endwith %}
 
       <div class="stat-cards">
-        <div class="stat-card"><strong>{{ unread_count }}</strong><span>New enquiries</span></div>
-        <div class="stat-card"><strong>{{ enquiries|length }}</strong><span>Total enquiries</span></div>
-        <div class="stat-card"><strong>{{ photos|length }}</strong><span>Photos in gallery</span></div>
-        <div class="stat-card"><strong>{{ videos|length }}</strong><span>Videos in gallery</span></div>
-        <div class="stat-card"><strong>{{ pending_ratings }}</strong><span>Reviews awaiting approval</span></div>
+        <div class="stat-card" data-tab-target="#enquiries" role="button" tabindex="0" style="cursor:pointer;" title="Click to view enquiries"><strong>{{ unread_count }}</strong><span>New enquiries</span></div>
+        <div class="stat-card" data-tab-target="#enquiries" role="button" tabindex="0" style="cursor:pointer;" title="Click to view enquiries"><strong>{{ enquiries|length }}</strong><span>Total enquiries</span></div>
+        <div class="stat-card" data-tab-target="#gallery" role="button" tabindex="0" style="cursor:pointer;" title="Click to view photo gallery"><strong>{{ photos|length }}</strong><span>Photos in gallery</span></div>
+        <div class="stat-card" data-tab-target="#videos" role="button" tabindex="0" style="cursor:pointer;" title="Click to view video gallery"><strong>{{ videos|length }}</strong><span>Videos in gallery</span></div>
+        <div class="stat-card" data-tab-target="#reviews" role="button" tabindex="0" style="cursor:pointer;" title="Click to view customer reviews"><strong>{{ pending_ratings }}</strong><span>Reviews awaiting approval</span></div>
       </div>
 
-      <div class="admin-tabs">
-        <a href="#enquiries">Enquiries <span class="count-pill">{{ unread_count }}</span></a>
-        <a href="#gallery">Photo Gallery</a>
-        <a href="#videos">Video Gallery</a>
-        <a href="#reviews">Reviews <span class="count-pill">{{ pending_ratings }}</span></a>
-        <a href="#settings">Settings</a>
+      <div class="admin-tabs" id="admin-tabs-nav">
+        <a href="#enquiries" class="tab-btn active">Enquiries <span class="count-pill">{{ unread_count }}</span></a>
+        <a href="#gallery" class="tab-btn">Photo Gallery</a>
+        <a href="#videos" class="tab-btn">Video Gallery</a>
+        <a href="#reviews" class="tab-btn">Reviews <span class="count-pill">{{ pending_ratings }}</span></a>
+        <a href="#settings" class="tab-btn">Settings</a>
       </div>
 
       <!-- ============== ENQUIRIES ============== -->
-      <section id="enquiries" class="admin-panel">
+      <section id="enquiries" class="admin-panel active">
         <h3>Customer Enquiries</h3>
         {% if enquiries %}
           {% for e in enquiries %}
@@ -321,5 +321,100 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/main.js') }}?v={{ now }}"></script>
+<script>
+(function() {
+  const tabs = document.querySelectorAll("#admin-tabs-nav a, .admin-tabs a");
+  const panels = document.querySelectorAll(".admin-panel");
+  const statCards = document.querySelectorAll(".stat-card[data-tab-target]");
+
+  function switchTab(targetHash, smoothScroll = false) {
+    let cleanId = (targetHash || "").replace(/^#/, "").trim();
+    if (!cleanId || !document.getElementById(cleanId)) {
+      cleanId = "enquiries";
+    }
+
+    // Toggle panel visibility
+    panels.forEach(panel => {
+      if (panel.id === cleanId) {
+        panel.classList.add("active");
+        panel.style.display = "block";
+      } else {
+        panel.classList.remove("active");
+        panel.style.display = "none";
+      }
+    });
+
+    // Toggle tab active indicator
+    tabs.forEach(tab => {
+      const href = tab.getAttribute("href") || "";
+      if (href === "#" + cleanId) {
+        tab.classList.add("active");
+      } else {
+        tab.classList.remove("active");
+      }
+    });
+
+    if (smoothScroll) {
+      const nav = document.getElementById("admin-tabs-nav") || document.querySelector(".admin-tabs");
+      if (nav) {
+        nav.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  }
+
+  // Intercept tab link clicks
+  tabs.forEach(tab => {
+    tab.addEventListener("click", function(e) {
+      e.preventDefault();
+      const hash = this.getAttribute("href");
+      if (history.pushState) {
+        history.pushState(null, null, hash);
+      } else {
+        window.location.hash = hash;
+      }
+      switchTab(hash, false);
+    });
+  });
+
+  // Stat cards quick tab navigation
+  statCards.forEach(card => {
+    card.addEventListener("click", function() {
+      const target = this.getAttribute("data-tab-target");
+      if (target) {
+        if (history.pushState) {
+          history.pushState(null, null, target);
+        } else {
+          window.location.hash = target;
+        }
+        switchTab(target, true);
+      }
+    });
+    // Keyboard accessibility for stat cards
+    card.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.click();
+      }
+    });
+  });
+
+  // Handle URL hash changes (browser back/forward & post-delete redirects)
+  window.addEventListener("hashchange", function() {
+    switchTab(window.location.hash, false);
+  });
+
+  // Initial tab activation on load
+  function initTabs() {
+    const currentHash = window.location.hash || "#enquiries";
+    switchTab(currentHash, false);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTabs);
+  } else {
+    initTabs();
+  }
+})();
+</script>
 </body>
 </html>
