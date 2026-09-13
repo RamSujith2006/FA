@@ -279,36 +279,27 @@ def push_enquiries_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                # Build set of local unique keys to identify what should remain
-                local_keys = set()
-                for d in data:
-                    created_at = d.get("created_at")
-                    phone = d.get("phone")
-                    if created_at and phone:
-                        local_keys.add((created_at, phone))
-
-                for d in data:
-                    item_id = d.get("id")
-                    created_at = d.get("created_at")
-                    phone = d.get("phone")
-                    name = d.get("name")
-                    if created_at and phone:
-                        mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, d, upsert=True)
-                    elif item_id:
-                        mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
-                    else:
-                        mongo.enquiries.replace_one({"phone": phone, "name": name}, d, upsert=True)
-
-                # Delete orphaned MongoDB documents that no longer exist locally
-                if allow_empty or data:
-                    try:
-                        all_mongo_docs = list(mongo.enquiries.find({}, {"_id": 1, "created_at": 1, "phone": 1}))
-                        for md in all_mongo_docs:
-                            m_key = (md.get("created_at"), md.get("phone"))
-                            if m_key[0] and m_key[1] and m_key not in local_keys:
-                                mongo.enquiries.delete_one({"_id": md["_id"]})
-                    except Exception as exc:
-                        print(f"[MongoDB Enquiries Orphan Cleanup Error]: {exc}")
+                if allow_empty:
+                    # Full replace: wipe MongoDB collection and re-insert remaining
+                    # This guarantees MongoDB matches SQLite exactly after deletions
+                    mongo.enquiries.delete_many({})
+                    if data:
+                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
+                        mongo.enquiries.insert_many(clean_data)
+                    print(f"[MongoDB Enquiries Full Replace]: {len(data)} items synced")
+                else:
+                    # Normal upsert for add operations
+                    for d in data:
+                        item_id = d.get("id")
+                        created_at = d.get("created_at")
+                        phone = d.get("phone")
+                        name = d.get("name")
+                        if created_at and phone:
+                            mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, d, upsert=True)
+                        elif item_id:
+                            mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
+                        else:
+                            mongo.enquiries.replace_one({"phone": phone, "name": name}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -335,35 +326,25 @@ def push_ratings_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                # Build set of local unique keys to identify what should remain
-                local_keys = set()
-                for d in data:
-                    created_at = d.get("created_at")
-                    name = d.get("name")
-                    if created_at and name:
-                        local_keys.add((created_at, name))
-
-                for d in data:
-                    item_id = d.get("id")
-                    created_at = d.get("created_at")
-                    name = d.get("name")
-                    if created_at and name:
-                        mongo.ratings.replace_one({"created_at": created_at, "name": name}, d, upsert=True)
-                    elif item_id:
-                        mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
-                    else:
-                        mongo.ratings.replace_one({"name": name}, d, upsert=True)
-
-                # Delete orphaned MongoDB documents that no longer exist locally
-                if allow_empty or data:
-                    try:
-                        all_mongo_docs = list(mongo.ratings.find({}, {"_id": 1, "created_at": 1, "name": 1}))
-                        for md in all_mongo_docs:
-                            m_key = (md.get("created_at"), md.get("name"))
-                            if m_key[0] and m_key[1] and m_key not in local_keys:
-                                mongo.ratings.delete_one({"_id": md["_id"]})
-                    except Exception as exc:
-                        print(f"[MongoDB Ratings Orphan Cleanup Error]: {exc}")
+                if allow_empty:
+                    # Full replace: wipe MongoDB collection and re-insert remaining
+                    mongo.ratings.delete_many({})
+                    if data:
+                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
+                        mongo.ratings.insert_many(clean_data)
+                    print(f"[MongoDB Ratings Full Replace]: {len(data)} items synced")
+                else:
+                    # Normal upsert for add operations
+                    for d in data:
+                        item_id = d.get("id")
+                        created_at = d.get("created_at")
+                        name = d.get("name")
+                        if created_at and name:
+                            mongo.ratings.replace_one({"created_at": created_at, "name": name}, d, upsert=True)
+                        elif item_id:
+                            mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
+                        else:
+                            mongo.ratings.replace_one({"name": name}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -566,27 +547,22 @@ def push_photos_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                # Build set of local filenames to identify what should remain
-                local_filenames = {d.get("filename") for d in data if d.get("filename")}
-
-                for d in data:
-                    item_id = d.get("id")
-                    fn = d.get("filename")
-                    if item_id:
-                        mongo.photos.replace_one({"id": item_id}, d, upsert=True)
-                    elif fn:
-                        mongo.photos.replace_one({"filename": fn}, d, upsert=True)
-
-                # Delete orphaned MongoDB documents that no longer exist locally
-                if allow_empty or data:
-                    try:
-                        all_mongo_docs = list(mongo.photos.find({}, {"_id": 1, "filename": 1}))
-                        for md in all_mongo_docs:
-                            m_fn = md.get("filename")
-                            if m_fn and m_fn not in local_filenames:
-                                mongo.photos.delete_one({"_id": md["_id"]})
-                    except Exception as exc:
-                        print(f"[MongoDB Photos Orphan Cleanup Error]: {exc}")
+                if allow_empty:
+                    # Full replace: wipe MongoDB collection and re-insert remaining
+                    mongo.photos.delete_many({})
+                    if data:
+                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
+                        mongo.photos.insert_many(clean_data)
+                    print(f"[MongoDB Photos Full Replace]: {len(data)} items synced")
+                else:
+                    # Normal upsert for add operations
+                    for d in data:
+                        item_id = d.get("id")
+                        fn = d.get("filename")
+                        if item_id:
+                            mongo.photos.replace_one({"id": item_id}, d, upsert=True)
+                        elif fn:
+                            mongo.photos.replace_one({"filename": fn}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
 
@@ -606,42 +582,25 @@ def push_videos_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
-                # Build sets of local identifiers to identify what should remain
-                local_filenames = {d.get("filename") for d in data if d.get("filename")}
-                local_cloud_urls = {d.get("cloud_url") for d in data if d.get("cloud_url")}
-                local_embed_urls = {d.get("embed_url") for d in data if d.get("embed_url")}
-
-                for d in data:
-                    item_id = d.get("id")
-                    fn = d.get("filename")
-                    cloud_url = d.get("cloud_url")
-                    if item_id:
-                        mongo.videos.replace_one({"id": item_id}, d, upsert=True)
-                    elif fn:
-                        mongo.videos.replace_one({"filename": fn}, d, upsert=True)
-                    elif cloud_url:
-                        mongo.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
-
-                # Delete orphaned MongoDB documents that no longer exist locally
-                if allow_empty or data:
-                    try:
-                        all_mongo_docs = list(mongo.videos.find({}, {"_id": 1, "filename": 1, "cloud_url": 1, "embed_url": 1}))
-                        for md in all_mongo_docs:
-                            m_fn = md.get("filename")
-                            m_curl = md.get("cloud_url")
-                            m_embed = md.get("embed_url")
-                            # Keep if any identifier matches a local record
-                            if m_fn and m_fn in local_filenames:
-                                continue
-                            if m_curl and m_curl in local_cloud_urls:
-                                continue
-                            if m_embed and m_embed in local_embed_urls:
-                                continue
-                            # No match found — this is an orphan, delete it
-                            if m_fn or m_curl or m_embed:
-                                mongo.videos.delete_one({"_id": md["_id"]})
-                    except Exception as exc:
-                        print(f"[MongoDB Videos Orphan Cleanup Error]: {exc}")
+                if allow_empty:
+                    # Full replace: wipe MongoDB collection and re-insert remaining
+                    mongo.videos.delete_many({})
+                    if data:
+                        clean_data = [{k: v for k, v in d.items() if k != '_id'} for d in data]
+                        mongo.videos.insert_many(clean_data)
+                    print(f"[MongoDB Videos Full Replace]: {len(data)} items synced")
+                else:
+                    # Normal upsert for add operations
+                    for d in data:
+                        item_id = d.get("id")
+                        fn = d.get("filename")
+                        cloud_url = d.get("cloud_url")
+                        if item_id:
+                            mongo.videos.replace_one({"id": item_id}, d, upsert=True)
+                        elif fn:
+                            mongo.videos.replace_one({"filename": fn}, d, upsert=True)
+                        elif cloud_url:
+                            mongo.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
 
