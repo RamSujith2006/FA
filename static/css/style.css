@@ -1283,3 +1283,91 @@ main {
 }
 .cs-modal-actions { display: flex; gap: 12px; margin-top: 20px; }
 
+/* =========================================================================
+   Mobile Side-by-Side (2-Column) Layout for Photos & Videos
+   ========================================================================= */
+@media (max-width: 768px) {
+  .photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px;
+  }
+  .gallery-item, .photo-grid figure {
+    border-radius: 8px;
+  }
+  .gallery-item img, .photo-grid figure img {
+    height: 180px;
+  }
+  .gallery-item .cap, .photo-grid figcaption {
+    font-size: 0.78rem;
+    padding: 24px 8px 8px;
+    line-height: 1.25;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px;
+  }
+  .video-card {
+    border-radius: 8px;
+  }
+  .video-card figcaption {
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  .gallery-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .gallery-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .gallery-tabs button {
+    flex-shrink: 0;
+    padding: 7px 16px;
+    font-size: 0.82rem;
+  }
+
+  .admin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+  .admin-thumb img, .admin-thumb video {
+    height: 125px;
+  }
+  .admin-thumb .cap {
+    font-size: 0.74rem;
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+  .gallery-item img, .photo-grid figure img {
+    height: 155px;
+  }
+  .gallery-item .cap, .photo-grid figcaption {
+    font-size: 0.72rem;
+    padding: 20px 6px 6px;
+    line-height: 1.18;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+  .video-card figcaption {
+    padding: 6px 8px;
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+}
+
+
