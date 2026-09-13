@@ -6,16 +6,16 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>FA Events Nagercoil — #1 Wedding & Event Decorators in KK District</title>
-<meta name="description" content="FA Events is the top wedding and event decoration company in Parvathipuram, Nagercoil & Kanyakumari (KK) District. Specialized in wedding stage, reception, engagement & birthday decoration. Call +91 78453 28583.">
-<meta name="keywords" content="fa events, fa events nagercoil, fa events kk dist, event decoration Nagercoil, wedding decoration Nagercoil, event decorators Kanyakumari, birthday decoration Nagercoil, event decorators KK District, stage decoration Nagercoil, wedding stage decor Parvathipuram, best event planners Nagercoil">
+<title>F.A Events Parvathipuram, Nagercoil — Wedding & Event Decoration</title>
+<meta name="description" content="F.A Events (FA Events) is the premier wedding and event decoration service in Parvathipuram (Parvatipuram), Christopher Colony, Nagercoil, Kanyakumari District. Stage, reception, birthday & flower decoration. Call +91 78453 28583.">
+<meta name="keywords" content="fa events parvatipuram, fa events parvathipuram, f.a events, fa events, fa events nagercoil, fa events christopher colony, event decoration nagercoil, wedding decoration parvatipuram, wedding stage decor parvathipuram, event decorators kk district, fa events kk dist">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="{{ request.url_root }}">
 
 <!-- Open Graph & Social Sharing -->
 <meta property="og:type" content="business.business">
-<meta property="og:title" content="FA Events Nagercoil — Best Wedding & Event Decoration in KK District">
-<meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Nagercoil & Kanyakumari District. Book on WhatsApp!">
+<meta property="og:title" content="F.A Events Parvathipuram, Nagercoil — Wedding & Event Decoration">
+<meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Christopher Colony, Nagercoil & Kanyakumari District.">
 <meta property="og:url" content="{{ request.url_root }}">
 <meta property="og:image" content="{{ request.url_root }}{{ url_for('static', filename='logo.png') }}">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
@@ -31,9 +31,17 @@
 {
   "@context": "https://schema.org",
   "@type": ["EventPlanner", "LocalBusiness"],
-  "name": "FA Events Nagercoil",
-  "alternateName": ["FA Events", "FA Events KK Dist", "FA Event Decoration"],
-  "description": "FA Events provides professional wedding, reception, stage, and birthday decoration services across Parvathipuram, Nagercoil, and Kanyakumari (KK) District.",
+  "name": "F.A events",
+  "alternateName": [
+    "FA Events",
+    "F.A Events Parvathipuram",
+    "FA Events Parvatipuram",
+    "FA Events Nagercoil",
+    "FA Events Christopher Colony",
+    "FA Events KK Dist",
+    "FA Event Decoration"
+  ],
+  "description": "F.A Events provides professional wedding, reception, stage, and birthday decoration services across Christopher Colony, Parvathipuram, Nagercoil, and Kanyakumari District.",
   "url": "{{ request.url_root }}",
   "telephone": "{{ biz.phone_tel }}",
   "email": "{{ biz.email }}",
@@ -52,8 +60,10 @@
     "longitude": 77.4119
   },
   "areaServed": [
-    "Nagercoil",
     "Parvathipuram",
+    "Parvatipuram",
+    "Christopher Colony",
+    "Nagercoil",
     "Kanyakumari",
     "Colachel",
     "Marthandam",
@@ -61,6 +71,7 @@
     "KK District"
   ],
   "sameAs": [
+    "{{ biz.google_business_profile }}",
     "{{ biz.instagram_link }}"
   ]
   {% if total_ratings and total_ratings > 0 %}
