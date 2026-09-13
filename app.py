@@ -310,12 +310,12 @@ def push_enquiries_to_cloud(db, allow_empty=False):
                     phone = d.get("phone")
                     name = d.get("name")
                     clean_d = {k: v for k, v in d.items() if k != '_id'}
-                    if item_id:
-                        mongo.enquiries.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
-                    elif created_at and phone:
+                    if created_at and phone:
                         mongo.enquiries.replace_one({"created_at": created_at, "phone": phone}, clean_d, upsert=True)
-                    else:
-                        mongo.enquiries.replace_one({"phone": phone, "name": name}, clean_d, upsert=True)
+                    elif created_at and name:
+                        mongo.enquiries.replace_one({"created_at": created_at, "name": name}, clean_d, upsert=True)
+                    elif item_id:
+                        mongo.enquiries.replace_one({"id": item_id}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -344,12 +344,10 @@ def push_ratings_to_cloud(db, allow_empty=False):
                     created_at = d.get("created_at")
                     name = d.get("name")
                     clean_d = {k: v for k, v in d.items() if k != '_id'}
-                    if item_id:
-                        mongo.ratings.replace_one({"$or": [{"id": item_id}, {"id": str(item_id)}]}, clean_d, upsert=True)
-                    elif created_at and name:
+                    if created_at and name:
                         mongo.ratings.replace_one({"created_at": created_at, "name": name}, clean_d, upsert=True)
-                    else:
-                        mongo.ratings.replace_one({"name": name}, clean_d, upsert=True)
+                    elif item_id:
+                        mongo.ratings.replace_one({"id": item_id}, clean_d, upsert=True)
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -1300,6 +1298,32 @@ def submit_enquiry():
         photos_json = json.dumps(attached_photos) if attached_photos else None
 
         db = get_db()
+        sync_enquiries_from_cloud(db)
+
+        # 1. Directly insert new enquiry into MongoDB Atlas with next incremented ID
+        mongo = get_mongo_db()
+        if mongo is not None:
+            try:
+                max_item = mongo.enquiries.find_one(sort=[("id", -1)])
+                next_id = ((max_item.get("id") or 0) + 1) if max_item and max_item.get("id") else 1
+                enquiry_doc = {
+                    "id": next_id,
+                    "name": name,
+                    "phone": phone,
+                    "email": email,
+                    "event_type": event_type,
+                    "event_date": event_date,
+                    "location": location,
+                    "message": message,
+                    "created_at": now,
+                    "is_read": 0,
+                    "photos": photos_json
+                }
+                mongo.enquiries.insert_one(enquiry_doc)
+            except Exception as exc:
+                print(f"[Mongo Direct Enquiry Insert Error]: {exc}")
+
+        # 2. Insert into SQLite
         cursor = db.execute(
             """
             INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, photos)
@@ -1308,8 +1332,6 @@ def submit_enquiry():
             (name, phone, email, event_type, event_date, location, message, now, photos_json),
         )
         db.commit()
-
-        # Synchronous cloud push to guarantee immediate consistency across all Vercel serverless instances
         push_enquiries_to_cloud(db, allow_empty=False)
 
         enquiry_payload = {
@@ -1377,13 +1399,33 @@ def submit_rating():
         photos_json = json.dumps(attached_photos) if attached_photos else None
 
         db = get_db()
+        sync_ratings_from_cloud(db)
+
+        # 1. Directly insert new rating into MongoDB Atlas with next incremented ID and approved=1
+        mongo = get_mongo_db()
+        if mongo is not None:
+            try:
+                max_item = mongo.ratings.find_one(sort=[("id", -1)])
+                next_id = ((max_item.get("id") or 0) + 1) if max_item and max_item.get("id") else 1
+                rating_doc = {
+                    "id": next_id,
+                    "name": name,
+                    "stars": stars_int,
+                    "comment": comment,
+                    "created_at": now,
+                    "approved": 1,
+                    "photos": photos_json
+                }
+                mongo.ratings.insert_one(rating_doc)
+            except Exception as exc:
+                print(f"[Mongo Direct Rating Insert Error]: {exc}")
+
+        # 2. Insert into SQLite
         cursor = db.execute(
-            "INSERT INTO ratings (name, stars, comment, created_at, approved, photos) VALUES (?, ?, ?, ?, 0, ?)",
+            "INSERT INTO ratings (name, stars, comment, created_at, approved, photos) VALUES (?, ?, ?, ?, 1, ?)",
             (name, stars_int, comment, now, photos_json),
         )
         db.commit()
-
-        # Synchronous cloud push to guarantee immediate consistency across all Vercel serverless instances
         push_ratings_to_cloud(db, allow_empty=False)
     except Exception as exc:
         app.logger.error("Rating save error: %s", exc)
@@ -1391,9 +1433,9 @@ def submit_rating():
             return jsonify({"ok": False, "error": "Could not submit review. Please try again."}), 500
 
     if is_ajax:
-        return jsonify({"ok": True, "message": "Thank you for your rating! It will appear on the website once approved by our team."})
+        return jsonify({"ok": True, "message": "Thank you for your rating! Your review is now live on our website."})
 
-    flash("Thank you for your rating! It will appear on the website once approved by our team.")
+    flash("Thank you for your rating! Your review is now live on our website.")
     return redirect(url_for("index") + "#reviews")
 
 
