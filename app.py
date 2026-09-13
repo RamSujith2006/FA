@@ -1190,6 +1190,27 @@ def favicon():
     )
 
 
+@app.route("/favicon-48x48.png")
+def favicon_48():
+    return send_from_directory(os.path.join(app.root_path, "static"), "favicon-48x48.png", mimetype="image/png")
+
+
+@app.route("/favicon-96x96.png")
+def favicon_96():
+    return send_from_directory(os.path.join(app.root_path, "static"), "favicon-96x96.png", mimetype="image/png")
+
+
+@app.route("/favicon-192x192.png")
+def favicon_192():
+    return send_from_directory(os.path.join(app.root_path, "static"), "favicon-192x192.png", mimetype="image/png")
+
+
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_touch_icon():
+    return send_from_directory(os.path.join(app.root_path, "static"), "apple-touch-icon.png", mimetype="image/png")
+
+
 @app.route("/googlee4e854f8bba5db09.html")
 def google_verify_e4():
     return "google-site-verification: googlee4e854f8bba5db09.html", 200, {"Content-Type": "text/html"}

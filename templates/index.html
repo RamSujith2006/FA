@@ -16,17 +16,41 @@
 
 <!-- Open Graph & Social Sharing -->
 <meta property="og:type" content="business.business">
+<meta property="og:site_name" content="F.A Events">
 <meta property="og:title" content="F.A Events Parvathipuram, Nagercoil — Wedding & Event Decoration">
 <meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Christopher Colony, Nagercoil & Kanyakumari District.">
 <meta property="og:url" content="{{ request.url_root }}">
 <meta property="og:image" content="{{ request.url_root }}{{ url_for('static', filename='logo.png') }}">
-<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
-<link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
+
+<!-- Favicon Suite for Google Search, Desktop & Mobile Browsers -->
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
+<link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192x192.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<link rel="apple-touch-icon-precomposed" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,600&family=Marcellus&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ now }}">
+
+<!-- Google WebSite Schema for Official Site Name in Search Results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "F.A Events",
+  "alternateName": [
+    "FA Events",
+    "F.A Events Parvathipuram",
+    "FA Events Parvatipuram",
+    "FA Events Nagercoil"
+  ],
+  "url": "{{ request.url_root }}"
+}
+</script>
 
 <!-- Google Local Business & EventPlanner Rich Schema -->
 <script type="application/ld+json">
