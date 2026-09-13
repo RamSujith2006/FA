@@ -55,10 +55,10 @@ if os.path.exists(env_file):
 # Cloudinary Storage Integration (Alternative / Large Media Storage)
 # ---------------------------------------------------------------------------
 HAS_CLOUDINARY = False
-CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL")
-CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
-CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
-CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL") or "cloudinary://837635196872869:MkHpI21dF3v_1I2Bc6C27taBTtw@vdejld9x"
+CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME") or "vdejld9x"
+CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY") or "837635196872869"
+CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET") or "MkHpI21dF3v_1I2Bc6C27taBTtw"
 
 if CLOUDINARY_URL:
     try:
@@ -229,13 +229,12 @@ def init_firebase():
 # ---------------------------------------------------------------------------
 HAS_MONGO = False
 MONGO_DB = None
-MONGO_URI = os.environ.get("MONGO_URI")
+MONGO_URI = os.environ.get("MONGO_URI") or "mongodb+srv://eventsf44_db_user:8o81c2HdNV2WQDry@cluster0.pttbjyw.mongodb.net/faevents?retryWrites=true&w=majority"
 
 def init_mongo():
     global HAS_MONGO, MONGO_DB, MONGO_URI
-    MONGO_URI = os.environ.get("MONGO_URI")
     if not MONGO_URI:
-        return None
+        MONGO_URI = os.environ.get("MONGO_URI") or "mongodb+srv://eventsf44_db_user:8o81c2HdNV2WQDry@cluster0.pttbjyw.mongodb.net/faevents?retryWrites=true&w=majority"
     if HAS_MONGO and MONGO_DB is not None:
         return MONGO_DB
     try:
@@ -394,9 +393,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
                 db.commit()
                 return
             else:
-                local_cnt = db.execute("SELECT COUNT(*) c FROM enquiries").fetchone()["c"]
-                if local_cnt > 0:
-                    push_enquiries_to_cloud(db)
+                db.execute("DELETE FROM enquiries")
+                db.commit()
                 return
         except Exception as exc:
             print(f"[MongoDB Enquiries Sync Error]: {exc}")
@@ -498,9 +496,8 @@ def sync_ratings_from_cloud(db, deleted_set=None):
                 db.commit()
                 return
             else:
-                local_cnt = db.execute("SELECT COUNT(*) c FROM ratings").fetchone()["c"]
-                if local_cnt > 0:
-                    push_ratings_to_cloud(db)
+                db.execute("DELETE FROM ratings")
+                db.commit()
                 return
         except Exception as exc:
             print(f"[MongoDB Ratings Sync Error]: {exc}")
@@ -573,20 +570,17 @@ def sync_ratings_from_cloud(db, deleted_set=None):
 
 def push_deleted_items_to_cloud(db):
     try:
-        rows = db.execute("SELECT * FROM deleted_items ORDER BY id ASC").fetchall()
-        data = [dict(r) for r in rows]
-
         mongo = get_mongo_db()
         if mongo is not None:
-            try:
-                for d in data:
-                    ident = d.get("identifier")
-                    if ident:
-                        mongo.deleted_items.replace_one({"identifier": ident}, d, upsert=True)
-            except Exception as exc:
-                print(f"[MongoDB Deleted Items Push Error]: {exc}")
-
-
+            rows = db.execute("SELECT item_type, identifier, created_at FROM deleted_items ORDER BY id DESC LIMIT 3").fetchall()
+            for r in rows:
+                ident = r["identifier"]
+                if ident:
+                    mongo.deleted_items.update_one(
+                        {"identifier": ident},
+                        {"$set": {"identifier": ident, "item_type": r["item_type"], "created_at": r["created_at"]}},
+                        upsert=True
+                    )
     except Exception as exc:
         print(f"[Push Deleted Items Error]: {exc}")
 
@@ -829,9 +823,8 @@ def sync_photos_from_cloud(db, deleted_set=None):
                 db.commit()
                 return
             else:
-                local_cnt = db.execute("SELECT COUNT(*) c FROM photos").fetchone()["c"]
-                if local_cnt > 0:
-                    push_photos_to_cloud(db)
+                db.execute("DELETE FROM photos")
+                db.commit()
                 return
         except Exception as exc:
             print(f"[MongoDB Photos Sync Error]: {exc}")
@@ -909,9 +902,8 @@ def sync_videos_from_cloud(db, deleted_set=None):
                 db.commit()
                 return
             else:
-                local_cnt = db.execute("SELECT COUNT(*) c FROM videos").fetchone()["c"]
-                if local_cnt > 0:
-                    push_videos_to_cloud(db)
+                db.execute("DELETE FROM videos")
+                db.commit()
                 return
         except Exception as exc:
             print(f"[MongoDB Videos Sync Error]: {exc}")
@@ -2076,24 +2068,25 @@ def mark_enquiry_read(enquiry_id):
 @login_required
 def delete_enquiry(enquiry_id):
     db = get_db()
-    sync_enquiries_from_cloud(db)
     row = db.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
+    e_phone = row["phone"] if row else None
+
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            mongo.enquiries.delete_one({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
+            del_res = mongo.enquiries.delete_one({"$or": [{"id": enquiry_id}, {"id": str(enquiry_id)}]})
+            if del_res.deleted_count == 0 and e_phone:
+                mongo.enquiries.delete_one({"phone": e_phone})
         except Exception as exc:
             print(f"[Mongo Enquiry Delete Warning]: {exc}")
+
     db.execute("DELETE FROM enquiries WHERE id = ?", (enquiry_id,))
     db.commit()
-    push_deleted_items_to_cloud(db)
+
     if row:
         record_deleted_identifiers(db, "enquiry", enquiry_id, phone=row["phone"], name=row["name"], created_at=row["created_at"])
-    if FIREBASE_DB and enquiry_id:
-        try:
-            FIREBASE_DB.collection("enquiries").document(str(enquiry_id)).delete()
-        except Exception:
-            pass
+    push_deleted_items_to_cloud(db)
+
     flash("Enquiry deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#enquiries")
 
@@ -2219,37 +2212,32 @@ def upload_photo():
 @login_required
 def delete_photo(photo_id):
     db = get_db()
-    sync_photos_from_cloud(db)
     c_url = request.form.get("cloud_url", "").strip() or None
     fn = request.form.get("filename", "").strip() or None
 
     row = db.execute("SELECT * FROM photos WHERE id = ?", (photo_id,)).fetchone()
-    if not row and (c_url or fn):
-        if c_url:
-            row = db.execute("SELECT * FROM photos WHERE cloud_url = ?", (c_url,)).fetchone()
-        if not row and fn:
-            row = db.execute("SELECT * FROM photos WHERE filename = ?", (fn,)).fetchone()
-
-    p_id = photo_id
     if row:
-        c_url = row["cloud_url"] if "cloud_url" in row.keys() and row["cloud_url"] else c_url
-        fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
-        p_id = row["id"]
+        c_url = row["cloud_url"] or c_url
+        fn = row["filename"] or fn
+
+    p_id = row["id"] if row else photo_id
+
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            del_res = mongo.photos.delete_one({"$or": [{"id": p_id}, {"id": str(p_id)}]})
+            if del_res.deleted_count == 0:
+                if c_url and c_url.startswith("http"):
+                    mongo.photos.delete_one({"cloud_url": c_url})
+                elif fn:
+                    mongo.photos.delete_one({"filename": fn})
+        except Exception as exc:
+            print(f"[Mongo Photo Delete Warning]: {exc}")
 
     db.execute("DELETE FROM photos WHERE id = ?", (p_id,))
     db.commit()
 
     record_deleted_identifiers(db, "photo", p_id, fn=fn, cloud_url=c_url)
-
-    mongo = get_mongo_db()
-    if mongo is not None:
-        try:
-            mongo.photos.delete_one({"$or": [{"id": p_id}, {"id": str(p_id)}]})
-            if c_url and c_url.startswith("http"):
-                mongo.photos.delete_one({"cloud_url": c_url})
-        except Exception:
-            pass
-
     push_deleted_items_to_cloud(db)
 
     if fn:
@@ -2260,7 +2248,6 @@ def delete_photo(photo_id):
             except Exception:
                 pass
 
-    # Background CDN file deletion (Cloudinary/Firebase Storage) for fast response
     if fn or c_url:
         threading.Thread(target=delete_file_from_cloud, args=("photos", fn), kwargs={"cloud_url": c_url}, daemon=True).start()
 
@@ -2363,41 +2350,36 @@ def upload_video():
 @login_required
 def delete_video(video_id):
     db = get_db()
-    sync_videos_from_cloud(db)
     c_url = request.form.get("cloud_url", "").strip() or None
     fn = request.form.get("filename", "").strip() or None
     embed = request.form.get("embed_url", "").strip() or None
 
     row = db.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
-    if not row and (c_url or fn or embed):
-        if c_url:
-            row = db.execute("SELECT * FROM videos WHERE cloud_url = ?", (c_url,)).fetchone()
-        if not row and fn:
-            row = db.execute("SELECT * FROM videos WHERE filename = ?", (fn,)).fetchone()
-        if not row and embed:
-            row = db.execute("SELECT * FROM videos WHERE embed_url = ?", (embed,)).fetchone()
-
-    v_id = video_id
     if row:
-        c_url = row["cloud_url"] if "cloud_url" in row.keys() and row["cloud_url"] else c_url
-        fn = row["filename"] if "filename" in row.keys() and row["filename"] else fn
-        embed = row["embed_url"] if "embed_url" in row.keys() and row["embed_url"] else embed
-        v_id = row["id"]
+        c_url = row["cloud_url"] or c_url
+        fn = row["filename"] or fn
+        embed = row["embed_url"] or embed
+
+    v_id = row["id"] if row else video_id
+
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            del_res = mongo.videos.delete_one({"$or": [{"id": v_id}, {"id": str(v_id)}]})
+            if del_res.deleted_count == 0:
+                if c_url and c_url.startswith("http"):
+                    mongo.videos.delete_one({"cloud_url": c_url})
+                elif fn:
+                    mongo.videos.delete_one({"filename": fn})
+                elif embed:
+                    mongo.videos.delete_one({"embed_url": embed})
+        except Exception as exc:
+            print(f"[Mongo Video Delete Warning]: {exc}")
 
     db.execute("DELETE FROM videos WHERE id = ?", (v_id,))
     db.commit()
 
     record_deleted_identifiers(db, "video", v_id, fn=fn, cloud_url=c_url, embed_url=embed)
-
-    mongo = get_mongo_db()
-    if mongo is not None:
-        try:
-            mongo.videos.delete_one({"$or": [{"id": v_id}, {"id": str(v_id)}]})
-            if c_url and c_url.startswith("http"):
-                mongo.videos.delete_one({"cloud_url": c_url})
-        except Exception:
-            pass
-
     push_deleted_items_to_cloud(db)
 
     if fn:
@@ -2408,7 +2390,6 @@ def delete_video(video_id):
             except Exception:
                 pass
 
-    # Background CDN file deletion (Cloudinary/Firebase Storage) for fast response
     if fn or c_url:
         threading.Thread(target=delete_file_from_cloud, args=("videos", fn), kwargs={"cloud_url": c_url}, daemon=True).start()
 
@@ -2442,24 +2423,26 @@ def approve_rating(rating_id):
 @login_required
 def delete_rating(rating_id):
     db = get_db()
-    sync_ratings_from_cloud(db)
     row = db.execute("SELECT * FROM ratings WHERE id = ?", (rating_id,)).fetchone()
+    r_name = row["name"] if row else None
+    r_created = row["created_at"] if row else None
+
     mongo = get_mongo_db()
     if mongo is not None:
         try:
-            mongo.ratings.delete_one({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
+            del_res = mongo.ratings.delete_one({"$or": [{"id": rating_id}, {"id": str(rating_id)}]})
+            if del_res.deleted_count == 0 and r_name:
+                mongo.ratings.delete_one({"name": r_name})
         except Exception as exc:
             print(f"[Mongo Rating Delete Warning]: {exc}")
+
     db.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
     db.commit()
-    push_deleted_items_to_cloud(db)
+
     if row:
         record_deleted_identifiers(db, "rating", rating_id, name=row["name"], created_at=row["created_at"])
-    if FIREBASE_DB and rating_id:
-        try:
-            FIREBASE_DB.collection("ratings").document(str(rating_id)).delete()
-        except Exception:
-            pass
+    push_deleted_items_to_cloud(db)
+
     flash("Review deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#reviews")
 
