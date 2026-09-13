@@ -1166,9 +1166,15 @@ def favicon():
     )
 
 
-@app.route("/google<string:code>.html")
-def google_verification(code):
-    return f"google-site-verification: google{code}.html", 200, {"Content-Type": "text/html"}
+@app.route("/googlee4e854f8bba5db09.html")
+def google_verify_e4():
+    return "google-site-verification: googlee4e854f8bba5db09.html", 200, {"Content-Type": "text/html"}
+
+
+@app.route("/google12f3303b4ba71e95.html")
+def google_verify_12():
+    return "google-site-verification: google12f3303b4ba71e95.html", 200, {"Content-Type": "text/html"}
+
 
 
 
