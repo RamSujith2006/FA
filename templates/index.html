@@ -16,20 +16,20 @@
 
 <!-- Open Graph & Social Sharing -->
 <meta property="og:type" content="business.business">
-<meta property="og:site_name" content="F.A Events">
+<meta property="og:site_name" content="FA Events">
 <meta property="og:title" content="F.A Events Parvathipuram, Nagercoil — Wedding & Event Decoration">
 <meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Christopher Colony, Nagercoil & Kanyakumari District.">
 <meta property="og:url" content="{{ request.url_root }}">
-<meta property="og:image" content="{{ request.url_root }}{{ url_for('static', filename='logo.png') }}">
+<meta property="og:image" content="{{ request.url_root.rstrip('/') }}/static/logo.png">
 
 <!-- Favicon Suite for Google Search, Desktop & Mobile Browsers -->
-<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-<link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
-<link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
-<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192x192.png') }}">
-<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-<link rel="apple-touch-icon-precomposed" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,10 +41,10 @@
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "name": "F.A Events",
+  "name": "FA Events",
   "alternateName": [
-    "FA Events",
-    "F.A Events Parvathipuram",
+    "F.A Events",
+    "FA Events Parvathipuram",
     "FA Events Parvatipuram",
     "FA Events Nagercoil"
   ],
@@ -56,10 +56,11 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": ["EventPlanner", "LocalBusiness"],
-  "name": "F.A events",
+  "@type": ["EventPlanner", "LocalBusiness", "Organization"],
+  "name": "FA Events",
   "alternateName": [
-    "FA Events",
+    "F.A Events",
+    "F.A events",
     "F.A Events Parvathipuram",
     "FA Events Parvatipuram",
     "FA Events Nagercoil",
@@ -67,6 +68,8 @@
     "FA Events KK Dist",
     "FA Event Decoration"
   ],
+  "logo": "{{ request.url_root.rstrip('/') }}/static/logo.png",
+  "image": "{{ request.url_root.rstrip('/') }}/static/logo.png",
   "description": "F.A Events provides professional wedding, reception, stage, and birthday decoration services across Christopher Colony, Parvathipuram, Nagercoil, and Kanyakumari District.",
   "url": "{{ request.url_root }}",
   "telephone": "{{ biz.phone_tel }}",

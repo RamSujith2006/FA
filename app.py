@@ -122,9 +122,21 @@ def from_json_or_split(val):
 
 @app.after_request
 def add_cache_control_headers(response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    path = request.path.lower()
+    if (
+        path.startswith("/static/")
+        or "favicon" in path
+        or "apple-touch-icon" in path
+        or path.endswith((".ico", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".css", ".js"))
+    ):
+        response.headers["Cache-Control"] = "public, max-age=604800, stale-while-revalidate=86400"
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers.pop("Pragma", None)
+        response.headers.pop("Expires", None)
+    else:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 
