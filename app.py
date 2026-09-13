@@ -279,6 +279,14 @@ def push_enquiries_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
+                # Build set of local unique keys to identify what should remain
+                local_keys = set()
+                for d in data:
+                    created_at = d.get("created_at")
+                    phone = d.get("phone")
+                    if created_at and phone:
+                        local_keys.add((created_at, phone))
+
                 for d in data:
                     item_id = d.get("id")
                     created_at = d.get("created_at")
@@ -290,6 +298,17 @@ def push_enquiries_to_cloud(db, allow_empty=False):
                         mongo.enquiries.replace_one({"id": item_id}, d, upsert=True)
                     else:
                         mongo.enquiries.replace_one({"phone": phone, "name": name}, d, upsert=True)
+
+                # Delete orphaned MongoDB documents that no longer exist locally
+                if allow_empty or data:
+                    try:
+                        all_mongo_docs = list(mongo.enquiries.find({}, {"_id": 1, "created_at": 1, "phone": 1}))
+                        for md in all_mongo_docs:
+                            m_key = (md.get("created_at"), md.get("phone"))
+                            if m_key[0] and m_key[1] and m_key not in local_keys:
+                                mongo.enquiries.delete_one({"_id": md["_id"]})
+                    except Exception as exc:
+                        print(f"[MongoDB Enquiries Orphan Cleanup Error]: {exc}")
             except Exception as exc:
                 print(f"[MongoDB Enquiries Push Error]: {exc}")
 
@@ -316,6 +335,14 @@ def push_ratings_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
+                # Build set of local unique keys to identify what should remain
+                local_keys = set()
+                for d in data:
+                    created_at = d.get("created_at")
+                    name = d.get("name")
+                    if created_at and name:
+                        local_keys.add((created_at, name))
+
                 for d in data:
                     item_id = d.get("id")
                     created_at = d.get("created_at")
@@ -326,6 +353,17 @@ def push_ratings_to_cloud(db, allow_empty=False):
                         mongo.ratings.replace_one({"id": item_id}, d, upsert=True)
                     else:
                         mongo.ratings.replace_one({"name": name}, d, upsert=True)
+
+                # Delete orphaned MongoDB documents that no longer exist locally
+                if allow_empty or data:
+                    try:
+                        all_mongo_docs = list(mongo.ratings.find({}, {"_id": 1, "created_at": 1, "name": 1}))
+                        for md in all_mongo_docs:
+                            m_key = (md.get("created_at"), md.get("name"))
+                            if m_key[0] and m_key[1] and m_key not in local_keys:
+                                mongo.ratings.delete_one({"_id": md["_id"]})
+                    except Exception as exc:
+                        print(f"[MongoDB Ratings Orphan Cleanup Error]: {exc}")
             except Exception as exc:
                 print(f"[MongoDB Ratings Push Error]: {exc}")
 
@@ -528,6 +566,9 @@ def push_photos_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
+                # Build set of local filenames to identify what should remain
+                local_filenames = {d.get("filename") for d in data if d.get("filename")}
+
                 for d in data:
                     item_id = d.get("id")
                     fn = d.get("filename")
@@ -535,6 +576,17 @@ def push_photos_to_cloud(db, allow_empty=False):
                         mongo.photos.replace_one({"id": item_id}, d, upsert=True)
                     elif fn:
                         mongo.photos.replace_one({"filename": fn}, d, upsert=True)
+
+                # Delete orphaned MongoDB documents that no longer exist locally
+                if allow_empty or data:
+                    try:
+                        all_mongo_docs = list(mongo.photos.find({}, {"_id": 1, "filename": 1}))
+                        for md in all_mongo_docs:
+                            m_fn = md.get("filename")
+                            if m_fn and m_fn not in local_filenames:
+                                mongo.photos.delete_one({"_id": md["_id"]})
+                    except Exception as exc:
+                        print(f"[MongoDB Photos Orphan Cleanup Error]: {exc}")
             except Exception as exc:
                 print(f"[MongoDB Photos Push Error]: {exc}")
 
@@ -554,6 +606,11 @@ def push_videos_to_cloud(db, allow_empty=False):
         mongo = get_mongo_db()
         if mongo is not None:
             try:
+                # Build sets of local identifiers to identify what should remain
+                local_filenames = {d.get("filename") for d in data if d.get("filename")}
+                local_cloud_urls = {d.get("cloud_url") for d in data if d.get("cloud_url")}
+                local_embed_urls = {d.get("embed_url") for d in data if d.get("embed_url")}
+
                 for d in data:
                     item_id = d.get("id")
                     fn = d.get("filename")
@@ -564,6 +621,27 @@ def push_videos_to_cloud(db, allow_empty=False):
                         mongo.videos.replace_one({"filename": fn}, d, upsert=True)
                     elif cloud_url:
                         mongo.videos.replace_one({"cloud_url": cloud_url}, d, upsert=True)
+
+                # Delete orphaned MongoDB documents that no longer exist locally
+                if allow_empty or data:
+                    try:
+                        all_mongo_docs = list(mongo.videos.find({}, {"_id": 1, "filename": 1, "cloud_url": 1, "embed_url": 1}))
+                        for md in all_mongo_docs:
+                            m_fn = md.get("filename")
+                            m_curl = md.get("cloud_url")
+                            m_embed = md.get("embed_url")
+                            # Keep if any identifier matches a local record
+                            if m_fn and m_fn in local_filenames:
+                                continue
+                            if m_curl and m_curl in local_cloud_urls:
+                                continue
+                            if m_embed and m_embed in local_embed_urls:
+                                continue
+                            # No match found — this is an orphan, delete it
+                            if m_fn or m_curl or m_embed:
+                                mongo.videos.delete_one({"_id": md["_id"]})
+                    except Exception as exc:
+                        print(f"[MongoDB Videos Orphan Cleanup Error]: {exc}")
             except Exception as exc:
                 print(f"[MongoDB Videos Push Error]: {exc}")
 
@@ -847,7 +925,9 @@ def sync_videos_from_cloud(db, deleted_set=None):
 def sync_from_firestore_to_sqlite(db, force=False):
     global LAST_FIRESTORE_SYNC
     now_ts = datetime.now().timestamp()
-    if not force and (now_ts - LAST_FIRESTORE_SYNC < 2):
+    # On Vercel (serverless), each instance has its own LAST_FIRESTORE_SYNC
+    # so the throttle is unreliable. Always sync on Vercel for consistency.
+    if not IS_VERCEL and not force and (now_ts - LAST_FIRESTORE_SYNC < 2):
         return
     LAST_FIRESTORE_SYNC = now_ts
 
@@ -1727,7 +1807,6 @@ def api_cloud_storage_delete():
                     pass
             push_photos_to_cloud(db, allow_empty=True)
             push_deleted_items_to_cloud(db)
-            bg_cloud_sync("delete_photo", fn=fn, c_url=c_url)
             deleted = True
 
     if (folder == "videos" or not folder) and not deleted:
@@ -1762,7 +1841,6 @@ def api_cloud_storage_delete():
                     pass
             push_videos_to_cloud(db, allow_empty=True)
             push_deleted_items_to_cloud(db)
-            bg_cloud_sync("delete_video", fn=fn, c_url=c_url, embed=embed, video_id=v_id)
             deleted = True
 
     return jsonify({"success": deleted})
@@ -1848,6 +1926,7 @@ def delete_enquiry(enquiry_id):
                 mongo.enquiries.delete_many({"$or": conds})
             except Exception as exc:
                 print(f"[Mongo Enquiry Delete Warning]: {exc}")
+        push_enquiries_to_cloud(db, allow_empty=True)
         push_deleted_items_to_cloud(db)
         if FIREBASE_DB and enquiry_id:
             try:
@@ -2001,9 +2080,10 @@ def delete_photo(photo_id):
                 pass
 
     push_deleted_items_to_cloud(db)
-    
-    # Background CDN deletion for instant response (<30ms)
-    threading.Thread(target=delete_file_from_cloud, args=("photos", fn, c_url)).start()
+
+    # Background CDN file deletion (Cloudinary/Firebase Storage) for fast response
+    if fn or c_url:
+        threading.Thread(target=delete_file_from_cloud, args=("photos", fn), kwargs={"cloud_url": c_url}, daemon=True).start()
 
     flash("Photo deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#gallery")
@@ -2132,8 +2212,9 @@ def delete_video(video_id):
 
     push_deleted_items_to_cloud(db)
 
-    # Background CDN deletion for instant response (<30ms)
-    threading.Thread(target=delete_file_from_cloud, args=("videos", fn, c_url)).start()
+    # Background CDN file deletion (Cloudinary/Firebase Storage) for fast response
+    if fn or c_url:
+        threading.Thread(target=delete_file_from_cloud, args=("videos", fn), kwargs={"cloud_url": c_url}, daemon=True).start()
 
     flash("Video deleted successfully.")
     return redirect(url_for("admin_dashboard") + "#videos")
@@ -2177,6 +2258,7 @@ def delete_rating(rating_id):
                 mongo.ratings.delete_many({"$or": conds})
             except Exception as exc:
                 print(f"[Mongo Rating Delete Warning]: {exc}")
+        push_ratings_to_cloud(db, allow_empty=True)
         push_deleted_items_to_cloud(db)
         if FIREBASE_DB and rating_id:
             try:
