@@ -1656,7 +1656,8 @@ def admin_dashboard():
         videos=videos,
         ratings=ratings,
         pending_ratings=pending_ratings,
-        firebase_status=firebase_status
+        firebase_status=firebase_status,
+        now=int(datetime.now().timestamp()),
     )
 
 
@@ -2126,15 +2127,20 @@ def api_cloudinary_sign():
 @app.route("/admin/photo/upload", methods=["POST"])
 @login_required
 def upload_photo():
-    caption = request.form.get("caption", "").strip()
-    category = request.form.get("category", "").strip()
+    json_data = request.get_json(silent=True) or {}
+    caption = (json_data.get("caption") if json_data else request.form.get("caption", "")) or ""
+    caption = caption.strip()
+    category = (json_data.get("category") if json_data else request.form.get("category", "")) or ""
+    category = category.strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    raw_cloud_urls = request.form.get("cloud_urls") or ""
-    cloud_url = request.form.get("cloud_url", "").strip()
+    raw_cloud_urls = (json_data.get("cloud_urls") if json_data else request.form.get("cloud_urls")) or ""
+    cloud_url = ((json_data.get("cloud_url") if json_data else request.form.get("cloud_url")) or "").strip()
 
     urls = []
-    if raw_cloud_urls:
+    if isinstance(raw_cloud_urls, list):
+        urls.extend([u.strip() for u in raw_cloud_urls if u and str(u).strip()])
+    elif raw_cloud_urls:
         try:
             parsed = json.loads(raw_cloud_urls)
             if isinstance(parsed, list):
@@ -2174,17 +2180,43 @@ def upload_photo():
                     pass
             uploaded_records.append((unique_name, c_url, caption, category, now))
 
+    is_ajax = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", "")
+
     if not uploaded_records:
+        if is_ajax:
+            return jsonify({"error": "Please choose at least one photo to upload."}), 400
         flash("Please choose at least one photo to upload (JPG, PNG, WEBP, GIF).")
         return redirect(url_for("admin_dashboard") + "#gallery")
 
+    # 1. Direct upsert to MongoDB Atlas first
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            for item in uploaded_records:
+                max_item = mongo.photos.find_one(sort=[("id", -1)])
+                next_id = ((max_item.get("id") or 0) + 1) if max_item and max_item.get("id") else 1
+                clean_d = {
+                    "id": next_id,
+                    "filename": item[0],
+                    "cloud_url": item[1],
+                    "caption": item[2],
+                    "category": item[3],
+                    "created_at": item[4]
+                }
+                mongo.photos.replace_one({"cloud_url": item[1]}, clean_d, upsert=True)
+        except Exception as exc:
+            print(f"[MongoDB Direct Photo Upload Error]: {exc}")
+
+    # 2. Sync to local SQLite
     db = get_db()
     sync_photos_from_cloud(db)
     for item in uploaded_records:
-        db.execute(
-            "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
-            item,
-        )
+        existing = db.execute("SELECT id FROM photos WHERE cloud_url = ?", (item[1],)).fetchone()
+        if not existing:
+            db.execute(
+                "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
+                item,
+            )
     db.commit()
     push_photos_to_cloud(db)
 
@@ -2202,6 +2234,9 @@ def upload_photo():
                 app.logger.warning("Firestore photo save failed: %s", exc)
 
     count = len(uploaded_records)
+    if is_ajax:
+        return jsonify({"success": True, "count": count})
+
     if count == 1:
         flash("Photo uploaded successfully to Cloud Storage!")
     else:
@@ -2259,16 +2294,22 @@ def delete_photo(photo_id):
 @app.route("/admin/video/upload", methods=["POST"])
 @login_required
 def upload_video():
-    caption = request.form.get("caption", "").strip()
-    category = request.form.get("category", "").strip()
-    embed_url = request.form.get("embed_url", "").strip()
+    json_data = request.get_json(silent=True) or {}
+    caption = (json_data.get("caption") if json_data else request.form.get("caption", "")) or ""
+    caption = caption.strip()
+    category = (json_data.get("category") if json_data else request.form.get("category", "")) or ""
+    category = category.strip()
+    embed_url = (json_data.get("embed_url") if json_data else request.form.get("embed_url", "")) or ""
+    embed_url = embed_url.strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    raw_cloud_urls = request.form.get("cloud_urls") or ""
-    cloud_url = request.form.get("cloud_url", "").strip()
+    raw_cloud_urls = (json_data.get("cloud_urls") if json_data else request.form.get("cloud_urls")) or ""
+    cloud_url = ((json_data.get("cloud_url") if json_data else request.form.get("cloud_url")) or "").strip()
 
     urls = []
-    if raw_cloud_urls:
+    if isinstance(raw_cloud_urls, list):
+        urls.extend([u.strip() for u in raw_cloud_urls if u and str(u).strip()])
+    elif raw_cloud_urls:
         try:
             parsed = json.loads(raw_cloud_urls)
             if isinstance(parsed, list):
@@ -2311,17 +2352,51 @@ def upload_video():
     if not uploaded_records and embed_url:
         uploaded_records.append(("", "", embed_url, caption, category, now))
 
+    is_ajax = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", "")
+
     if not uploaded_records:
+        if is_ajax:
+            return jsonify({"error": "Upload a video file or paste a YouTube / Instagram embed link."}), 400
         flash("Upload a video file or paste a YouTube / Instagram embed link.")
         return redirect(url_for("admin_dashboard") + "#videos")
 
+    # 1. Direct upsert to MongoDB Atlas first
+    mongo = get_mongo_db()
+    if mongo is not None:
+        try:
+            for item in uploaded_records:
+                max_item = mongo.videos.find_one(sort=[("id", -1)])
+                next_id = ((max_item.get("id") or 0) + 1) if max_item and max_item.get("id") else 1
+                clean_d = {
+                    "id": next_id,
+                    "filename": item[0],
+                    "cloud_url": item[1],
+                    "embed_url": item[2],
+                    "caption": item[3],
+                    "category": item[4],
+                    "created_at": item[5]
+                }
+                if item[1]:
+                    mongo.videos.replace_one({"cloud_url": item[1]}, clean_d, upsert=True)
+                elif item[2]:
+                    mongo.videos.replace_one({"embed_url": item[2]}, clean_d, upsert=True)
+        except Exception as exc:
+            print(f"[MongoDB Direct Video Upload Error]: {exc}")
+
+    # 2. Sync to local SQLite
     db = get_db()
     sync_videos_from_cloud(db)
     for item in uploaded_records:
-        db.execute(
-            "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            item,
-        )
+        existing = None
+        if item[1]:
+            existing = db.execute("SELECT id FROM videos WHERE cloud_url = ?", (item[1],)).fetchone()
+        elif item[2]:
+            existing = db.execute("SELECT id FROM videos WHERE embed_url = ?", (item[2],)).fetchone()
+        if not existing:
+            db.execute(
+                "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                item,
+            )
     db.commit()
     push_videos_to_cloud(db)
 
@@ -2341,6 +2416,9 @@ def upload_video():
                 app.logger.warning("Firestore video save failed: %s", exc)
 
     count = len(uploaded_records)
+    if is_ajax:
+        return jsonify({"success": True, "count": count})
+
     if count == 1:
         flash("Video added successfully to Cloud Storage!")
     else:

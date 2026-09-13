@@ -793,16 +793,43 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
         uploadedUrls.push(secureUrl);
       }
 
-      // Step 3: All files successfully uploaded
-      if (percentText) percentText.textContent = `100% (Saving ${uploadedUrls.length} items to gallery...)`;
+      // Step 3: Save uploaded URLs to database via fetch
+      if (percentText) percentText.textContent = `100% (Saving ${uploadedUrls.length} ${itemNoun}${uploadedUrls.length > 1 ? "s" : ""} to gallery...)`;
       if (progressBarFill) progressBarFill.style.width = "100%";
 
+      const saveEndpoint = folder === "videos" ? "/admin/video/upload" : "/admin/photo/upload";
+      const savePayload = {
+        cloud_urls: uploadedUrls,
+        caption: document.getElementById(folder === "videos" ? "video-caption" : "photo-caption")?.value || "",
+        category: document.getElementById(folder === "videos" ? "video-category" : "photo-category")?.value || ""
+      };
+
+      try {
+        const saveRes = await fetch(saveEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify(savePayload)
+        });
+
+        if (saveRes.ok) {
+          if (percentText) percentText.textContent = `✅ Successfully saved to gallery! Refreshing...`;
+          setTimeout(() => {
+            window.location.hash = folder === "videos" ? "#videos" : "#gallery";
+            window.location.reload();
+          }, 600);
+          return;
+        }
+      } catch (saveErr) {
+        console.warn("Fetch save failed, falling back to form submit:", saveErr);
+      }
+
+      // Fallback: populate hidden inputs and submit form
       if (cloudUrlsInput) cloudUrlsInput.value = JSON.stringify(uploadedUrls);
       if (cloudUrlInput && uploadedUrls.length > 0) cloudUrlInput.value = uploadedUrls[0];
-
-      // Clear heavy binary files from input so Vercel payload stays tiny (<1KB)
       fileInput.value = "";
-
       form.submit();
 
     } catch (err) {
