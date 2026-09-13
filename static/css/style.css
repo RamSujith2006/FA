@@ -875,6 +875,164 @@ main {
 .review-row:last-child { border-bottom: none; }
 .review-row .stars { display: block; margin-bottom: 6px; }
 
+/* Multi-file Media Preview Box in Admin Panel */
+.media-preview-box {
+  background: rgba(18, 14, 22, 0.7);
+  border: 1px dashed rgba(212, 175, 55, 0.35);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 10px 0 16px;
+}
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--gold-light);
+}
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+}
+.preview-card {
+  position: relative;
+  background: #09070c;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.preview-thumb-wrap {
+  width: 100%;
+  height: 85px;
+  background: #151119;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.preview-thumb-wrap img,
+.preview-thumb-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.preview-generic-icon {
+  font-size: 1.8rem;
+}
+.preview-info {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #08060a;
+}
+.preview-name {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-size {
+  font-size: 0.7rem;
+  color: var(--gold);
+}
+.preview-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(163, 39, 59, 0.85);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: background 0.2s;
+}
+.preview-remove-btn:hover {
+  background: #d32f2f;
+}
+
+/* Attached Reference Photos in Enquiries & Reviews (Admin Dashboard) */
+.attached-media-block {
+  margin: 10px 0 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid var(--gold);
+  border-radius: 4px;
+}
+.attached-title {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--gold-light);
+  margin-bottom: 6px;
+}
+.attached-media-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.attached-media-thumb {
+  display: block;
+  width: 58px;
+  height: 58px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  transition: transform 0.2s, border-color 0.2s;
+}
+.attached-media-thumb:hover {
+  transform: scale(1.08);
+  border-color: var(--gold);
+}
+.attached-media-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Customer Review Photos in Website Index */
+.review-card-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.review-photo-item {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  transition: transform 0.2s, border-color 0.2s;
+}
+.review-photo-item:hover {
+  transform: scale(1.06);
+  border-color: var(--gold);
+}
+.review-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .login-shell {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle at center, #18131c 0%, #060507 100%);

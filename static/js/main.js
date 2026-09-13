@@ -555,18 +555,130 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-/* Direct Media Upload to Cloudinary for Photos & Videos (Bypasses Vercel 4.5MB Payload Limit) */
+/* Direct Media Upload to Cloudinary for Photos & Videos (Batch & Multi-file Support) */
 document.addEventListener("DOMContentLoaded", () => {
   setupDirectMediaUpload("video-upload-form", "video-file", "video-cloud-url", "video-upload-progress", "video-upload-percent", "video-submit-btn", "videos");
   setupDirectMediaUpload("photo-upload-form", "photo-file", "photo-cloud-url", "photo-upload-progress", "photo-upload-percent", "photo-submit-btn", "photos");
+
+  const photoInput = document.getElementById("photo-file");
+  if (photoInput) {
+    photoInput.addEventListener("change", () => {
+      renderMediaPreviews("photo-file", "photo-preview-box", "photo-preview-grid", "photo-preview-count");
+    });
+  }
+
+  const videoInput = document.getElementById("video-file");
+  if (videoInput) {
+    videoInput.addEventListener("change", () => {
+      renderMediaPreviews("video-file", "video-preview-box", "video-preview-grid", "video-preview-count");
+    });
+  }
 });
+
+function renderMediaPreviews(inputId, boxId, gridId, countId) {
+  const fileInput = document.getElementById(inputId);
+  const box = document.getElementById(boxId);
+  const grid = document.getElementById(gridId);
+  const countText = document.getElementById(countId);
+
+  if (!fileInput || !box || !grid) return;
+  const files = fileInput.files;
+
+  if (!files || files.length === 0) {
+    box.style.display = "none";
+    grid.innerHTML = "";
+    if (countText) countText.textContent = "0 selected";
+    return;
+  }
+
+  const isVideo = (fileInput.accept && fileInput.accept.includes("video")) || (fileInput.name && fileInput.name.includes("video"));
+  const noun = isVideo ? "video" : "photo";
+  if (countText) {
+    countText.textContent = `${files.length} ${noun}${files.length > 1 ? "s" : ""} selected`;
+  }
+
+  grid.innerHTML = "";
+  box.style.display = "block";
+
+  Array.from(files).forEach((file, idx) => {
+    const card = document.createElement("div");
+    card.className = "preview-card";
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "preview-remove-btn";
+    removeBtn.innerHTML = "&times;";
+    removeBtn.title = "Remove this file";
+    removeBtn.onclick = (e) => {
+      e.stopPropagation();
+      removeFileFromInput(inputId, idx, boxId, gridId, countId);
+    };
+
+    const mediaHolder = document.createElement("div");
+    mediaHolder.className = "preview-thumb-wrap";
+
+    if (file.type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      img.alt = file.name;
+      img.onload = () => URL.revokeObjectURL(img.src);
+      mediaHolder.appendChild(img);
+    } else if (file.type.startsWith("video/")) {
+      const video = document.createElement("video");
+      video.src = URL.createObjectURL(file);
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      mediaHolder.appendChild(video);
+    } else {
+      mediaHolder.innerHTML = `<div class="preview-generic-icon">📁</div>`;
+    }
+
+    const info = document.createElement("div");
+    info.className = "preview-info";
+    const sizeKb = (file.size / 1024).toFixed(0);
+    const sizeStr = file.size > 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${sizeKb} KB`;
+    info.innerHTML = `<span class="preview-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="preview-size">${sizeStr}</span>`;
+
+    card.appendChild(removeBtn);
+    card.appendChild(mediaHolder);
+    card.appendChild(info);
+    grid.appendChild(card);
+  });
+}
+
+function removeFileFromInput(inputId, indexToRemove, boxId, gridId, countId) {
+  const fileInput = document.getElementById(inputId);
+  if (!fileInput || !fileInput.files) return;
+
+  try {
+    const dt = new DataTransfer();
+    for (let i = 0; i < fileInput.files.length; i++) {
+      if (i !== indexToRemove) {
+        dt.items.add(fileInput.files[i]);
+      }
+    }
+    fileInput.files = dt.files;
+  } catch (err) {
+    console.warn("DataTransfer not supported:", err);
+  }
+  renderMediaPreviews(inputId, boxId, gridId, countId);
+}
+
+function clearSelectedMedia(inputId, boxId, gridId, countId) {
+  const fileInput = document.getElementById(inputId);
+  if (fileInput) fileInput.value = "";
+  renderMediaPreviews(inputId, boxId, gridId, countId);
+}
 
 function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBoxId, percentTextId, submitBtnId, folder) {
   const form = document.getElementById(formId);
   const fileInput = document.getElementById(fileInputId);
   const cloudUrlInput = document.getElementById(cloudUrlInputId);
+  const cloudUrlsInput = document.getElementById(folder === "videos" ? "video-cloud-urls" : "photo-cloud-urls");
   const progressBox = document.getElementById(progressBoxId);
   const percentText = document.getElementById(percentTextId);
+  const progressBarFill = document.getElementById(folder === "videos" ? "video-progress-bar-fill" : "photo-progress-bar-fill");
   const submitBtn = document.getElementById(submitBtnId);
 
   if (!form || !fileInput) return;
@@ -575,6 +687,7 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
     if (submitBtn) submitBtn.disabled = false;
     if (progressBox) progressBox.style.display = "none";
     if (percentText) percentText.textContent = "0%";
+    if (progressBarFill) progressBarFill.style.width = "0%";
   }
 
   form.addEventListener("submit", async (e) => {
@@ -583,98 +696,117 @@ function setupDirectMediaUpload(formId, fileInputId, cloudUrlInputId, progressBo
       return;
     }
 
-    // If cloud_url is already populated, let form submit
-    if (cloudUrlInput && cloudUrlInput.value) {
+    // If cloud URLs are already populated, let form submit
+    if ((cloudUrlsInput && cloudUrlsInput.value) || (cloudUrlInput && cloudUrlInput.value)) {
       return;
     }
 
     e.preventDefault();
 
-    const file = fileInput.files[0];
+    const files = Array.from(fileInput.files);
+    const totalFiles = files.length;
+    const isVideo = folder === "videos";
+    const itemNoun = isVideo ? "video" : "photo";
 
-    // Disable submit button & show progress box
     if (submitBtn) submitBtn.disabled = true;
     if (progressBox) progressBox.style.display = "block";
-    if (percentText) percentText.textContent = "0% (Preparing video upload...)";
+    if (percentText) percentText.textContent = `0% (Preparing ${totalFiles} ${itemNoun}${totalFiles > 1 ? "s" : ""} for cloud upload...)`;
+    if (progressBarFill) progressBarFill.style.width = "0%";
+
+    const uploadedUrls = [];
 
     try {
-      // Step 1: Request signature from backend
-      const signRes = await fetch(`/admin/api/cloudinary-sign?folder=${folder}`);
-      if (!signRes.ok) {
-        throw new Error("Could not authenticate with Cloud Storage server.");
-      }
+      for (let i = 0; i < totalFiles; i++) {
+        const file = files[i];
 
-      const signData = await signRes.json();
-      if (!signData.signature || !signData.cloud_name) {
-        throw new Error(signData.error || "Could not retrieve upload credentials");
-      }
-
-      // Step 2: Prepare FormData for direct Cloudinary upload (file MUST be appended last!)
-      const formData = new FormData();
-      formData.append("api_key", signData.api_key);
-      formData.append("timestamp", String(signData.timestamp));
-      formData.append("folder", signData.folder);
-      formData.append("signature", signData.signature);
-      formData.append("file", file);
-
-      const resourceType = signData.resource_type || (folder === "videos" ? "video" : "image");
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${resourceType}/upload`;
-
-      // Use XMLHttpRequest to enable accurate upload percentage progress
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", uploadUrl, true);
-
-      xhr.upload.onprogress = (evt) => {
-        if (evt.lengthComputable) {
-          const percent = Math.round((evt.loaded / evt.total) * 100);
-          if (percentText) percentText.textContent = `${percent}% (Uploading to Cloud Storage...)`;
+        // Step 1: Request signature from backend
+        const signRes = await fetch(`/admin/api/cloudinary-sign?folder=${folder}`);
+        if (!signRes.ok) {
+          throw new Error("Could not authenticate with Cloud Storage server.");
         }
-      };
 
-      xhr.onload = function() {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const resData = JSON.parse(xhr.responseText);
-            const secureUrl = resData.secure_url || resData.url;
+        const signData = await signRes.json();
+        if (!signData.signature || !signData.cloud_name) {
+          throw new Error(signData.error || "Could not retrieve upload credentials");
+        }
 
-            if (secureUrl) {
-              if (percentText) percentText.textContent = "100% (Saving details...)";
-              if (cloudUrlInput) cloudUrlInput.value = secureUrl;
+        // Step 2: Prepare FormData for direct Cloudinary upload (file MUST be appended last!)
+        const formData = new FormData();
+        formData.append("api_key", signData.api_key);
+        formData.append("timestamp", String(signData.timestamp));
+        formData.append("folder", signData.folder);
+        formData.append("signature", signData.signature);
+        formData.append("file", file);
 
-              // Clear heavy binary file from input so Vercel payload stays tiny (<1KB)
-              fileInput.value = "";
+        const resourceType = signData.resource_type || (isVideo ? "video" : "image");
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${signData.cloud_name}/${resourceType}/upload`;
 
-              // Submit form with text fields (cloud_url, caption, category)
-              form.submit();
+        const secureUrl = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", uploadUrl, true);
+
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const filePercent = Math.round((evt.loaded / evt.total) * 100);
+              const overallPercent = Math.round(((i * 100) + filePercent) / totalFiles);
+              if (percentText) {
+                percentText.textContent = `Uploading ${itemNoun} ${i + 1} of ${totalFiles} (${filePercent}%) — Overall: ${overallPercent}%`;
+              }
+              if (progressBarFill) {
+                progressBarFill.style.width = `${overallPercent}%`;
+              }
+            }
+          };
+
+          xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const resData = JSON.parse(xhr.responseText);
+                const url = resData.secure_url || resData.url;
+                if (url) {
+                  resolve(url);
+                } else {
+                  reject(new Error("No URL returned from Cloud Storage."));
+                }
+              } catch (err) {
+                reject(err);
+              }
             } else {
-              throw new Error("No URL returned from Cloud Storage.");
+              let errMessage = `Upload failed with status ${xhr.status}`;
+              try {
+                const errData = JSON.parse(xhr.responseText);
+                if (errData.error && errData.error.message) {
+                  errMessage = errData.error.message;
+                }
+              } catch (_) {}
+              reject(new Error(errMessage));
             }
-          } catch (e) {
-            alert(`⚠️ Upload error: ${e.message}`);
-            resetUploadUI();
-          }
-        } else {
-          let errMessage = `Upload failed with status ${xhr.status}`;
-          try {
-            const errData = JSON.parse(xhr.responseText);
-            if (errData.error && errData.error.message) {
-              errMessage = errData.error.message;
-            }
-          } catch (_) {}
-          alert(`⚠️ Cloud Upload Error: ${errMessage}`);
-          resetUploadUI();
-        }
-      };
+          };
 
-      xhr.onerror = function() {
-        alert("⚠️ Cloud Upload Network Error. Please check your internet connection and try again.");
-        resetUploadUI();
-      };
+          xhr.onerror = function() {
+            reject(new Error("Network error while uploading to Cloud Storage. Please check your connection."));
+          };
 
-      xhr.send(formData);
+          xhr.send(formData);
+        });
+
+        uploadedUrls.push(secureUrl);
+      }
+
+      // Step 3: All files successfully uploaded
+      if (percentText) percentText.textContent = `100% (Saving ${uploadedUrls.length} items to gallery...)`;
+      if (progressBarFill) progressBarFill.style.width = "100%";
+
+      if (cloudUrlsInput) cloudUrlsInput.value = JSON.stringify(uploadedUrls);
+      if (cloudUrlInput && uploadedUrls.length > 0) cloudUrlInput.value = uploadedUrls[0];
+
+      // Clear heavy binary files from input so Vercel payload stays tiny (<1KB)
+      fileInput.value = "";
+
+      form.submit();
 
     } catch (err) {
-      alert(`⚠️ Could not start upload: ${err.message}`);
+      alert(`⚠️ Cloud Upload Error: ${err.message}`);
       resetUploadUI();
     }
   });

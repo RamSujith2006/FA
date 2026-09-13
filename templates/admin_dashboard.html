@@ -62,6 +62,18 @@
                 &middot; {{ e.created_at }}
               </div>
               {% if e.message %}<p class="msg">{{ e.message }}</p>{% endif %}
+              {% if e.photos %}
+              <div class="attached-media-block">
+                <span class="attached-title">Attached Reference Photos:</span>
+                <div class="attached-media-grid">
+                  {% for pic in e.photos|from_json_or_split %}
+                  <a href="{{ pic }}" target="_blank" rel="noopener" class="attached-media-thumb">
+                    <img src="{{ pic }}" alt="Enquiry attachment">
+                  </a>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
             </div>
             <div class="enquiry-actions">
               {% if not e.is_read %}
@@ -85,22 +97,36 @@
         <h3>Photo Gallery</h3>
         <form id="photo-upload-form" class="upload-form" action="{{ url_for('upload_photo') }}" method="post" enctype="multipart/form-data">
           <input type="hidden" name="cloud_url" id="photo-cloud-url">
+          <input type="hidden" name="cloud_urls" id="photo-cloud-urls">
           <div class="field">
-            <label for="photo-file">Photo file (JPG, PNG, WEBP, GIF)</label>
-            <input type="file" id="photo-file" name="photo" accept="image/*">
+            <label for="photo-file">Select Photos (Choose single or multiple — JPG, PNG, WEBP, GIF)</label>
+            <input type="file" id="photo-file" name="photos" accept="image/*" multiple>
+          </div>
+          <div id="photo-preview-box" class="media-preview-box" style="display:none;">
+            <div class="preview-header">
+              <span id="photo-preview-count">0 photos selected</span>
+              <button type="button" class="mini-btn danger" onclick="clearSelectedMedia('photo-file', 'photo-preview-box', 'photo-preview-grid', 'photo-preview-count')">Clear all</button>
+            </div>
+            <div id="photo-preview-grid" class="preview-grid"></div>
           </div>
           <div class="field">
-            <label for="photo-caption">Caption</label>
+            <label for="photo-caption">Caption (applied to uploaded photos)</label>
             <input type="text" id="photo-caption" name="caption" placeholder="e.g. Wedding stage, Nagercoil">
           </div>
           <div class="field">
             <label for="photo-category">Category</label>
             <input type="text" id="photo-category" name="category" placeholder="e.g. Wedding, Birthday, Stage">
           </div>
-          <div id="photo-upload-progress" style="display:none; margin:10px 0; padding:10px 14px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:6px; color:#d4af37; font-weight:500;">
-            ☁️ Uploading photo to Cloud Storage... <span id="photo-upload-percent">0%</span>
+          <div id="photo-upload-progress" style="display:none; margin:10px 0; padding:12px 16px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:8px; color:#d4af37; font-weight:500;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.88rem;">
+              <span>☁️ Uploading to Cloud Storage...</span>
+              <span id="photo-upload-percent">0%</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:3px; overflow:hidden;">
+              <div id="photo-progress-bar-fill" style="background:#d4af37; height:100%; width:0%; transition:width 0.2s ease;"></div>
+            </div>
           </div>
-          <button type="submit" id="photo-submit-btn" class="btn btn-primary">Upload Photo</button>
+          <button type="submit" id="photo-submit-btn" class="btn btn-primary">Upload Photo(s)</button>
         </form>
 
         <div class="admin-grid">
@@ -126,9 +152,17 @@
         <h3>Video Gallery</h3>
         <form id="video-upload-form" class="upload-form" action="{{ url_for('upload_video') }}" method="post" enctype="multipart/form-data">
           <input type="hidden" name="cloud_url" id="video-cloud-url">
+          <input type="hidden" name="cloud_urls" id="video-cloud-urls">
           <div class="field">
-            <label for="video-file">Upload a video file (MP4, WEBM, MOV) — streams direct to Cloud Storage</label>
-            <input type="file" id="video-file" name="video" accept="video/*">
+            <label for="video-file">Upload video file(s) (MP4, WEBM, MOV) — streams direct to Cloud Storage</label>
+            <input type="file" id="video-file" name="videos" accept="video/*" multiple>
+          </div>
+          <div id="video-preview-box" class="media-preview-box" style="display:none;">
+            <div class="preview-header">
+              <span id="video-preview-count">0 videos selected</span>
+              <button type="button" class="mini-btn danger" onclick="clearSelectedMedia('video-file', 'video-preview-box', 'video-preview-grid', 'video-preview-count')">Clear all</button>
+            </div>
+            <div id="video-preview-grid" class="preview-grid"></div>
           </div>
           <div class="field">
             <label for="video-embed">Or paste a YouTube / Instagram embed link</label>
@@ -142,10 +176,16 @@
             <label for="video-category">Category</label>
             <input type="text" id="video-category" name="category" placeholder="e.g. Wedding, Birthday">
           </div>
-          <div id="video-upload-progress" style="display:none; margin:10px 0; padding:10px 14px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:6px; color:#d4af37; font-weight:500;">
-            ☁️ Uploading video directly to Cloud Storage... <span id="video-upload-percent">0%</span>
+          <div id="video-upload-progress" style="display:none; margin:10px 0; padding:12px 16px; background:rgba(212,175,55,0.12); border:1px solid #d4af37; border-radius:8px; color:#d4af37; font-weight:500;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.88rem;">
+              <span>☁️ Uploading video directly to Cloud Storage...</span>
+              <span id="video-upload-percent">0%</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:3px; overflow:hidden;">
+              <div id="video-progress-bar-fill" style="background:#d4af37; height:100%; width:0%; transition:width 0.2s ease;"></div>
+            </div>
           </div>
-          <button type="submit" id="video-submit-btn" class="btn btn-primary">Add Video</button>
+          <button type="submit" id="video-submit-btn" class="btn btn-primary">Add Video(s)</button>
         </form>
 
         <div class="admin-grid">
@@ -180,6 +220,18 @@
             <div>
               <span class="stars">{{ "★"*r.stars }}{{ "☆"*(5-r.stars) }}</span>
               {% if r.comment %}<p style="margin:0 0 4px; font-size:0.9rem;">"{{ r.comment }}"</p>{% endif %}
+              {% if r.photos %}
+              <div class="attached-media-block">
+                <span class="attached-title">Customer Attached Photos:</span>
+                <div class="attached-media-grid">
+                  {% for pic in r.photos|from_json_or_split %}
+                  <a href="{{ pic }}" target="_blank" rel="noopener" class="attached-media-thumb">
+                    <img src="{{ pic }}" alt="Review photo">
+                  </a>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
               <span style="font-size:0.82rem; color:var(--ink-soft);">{{ r.name }} &middot; {{ r.created_at }} &middot; {{ 'Published' if r.approved else 'Pending approval' }}</span>
             </div>
             <div class="enquiry-actions">

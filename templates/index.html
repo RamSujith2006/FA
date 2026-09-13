@@ -315,6 +315,15 @@
         <div class="review-card">
           <span class="stars">{{ "★"*r.stars }}{{ "☆"*(5-r.stars) }}</span>
           {% if r.comment %}<p>"{{ r.comment }}"</p>{% endif %}
+          {% if r.photos %}
+          <div class="review-card-photos">
+            {% for pic in r.photos|from_json_or_split %}
+            <a href="{{ pic }}" target="_blank" rel="noopener" class="review-photo-item">
+              <img src="{{ pic }}" alt="Decor review photo" loading="lazy">
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
           <span class="who">{{ r.name }}</span>
         </div>
         {% endfor %}
@@ -323,7 +332,7 @@
       <p class="empty-note" style="margin-bottom:36px;">Be the first to share how your event decoration turned out.</p>
       {% endif %}
 
-      <form id="rating-form" class="rate-form" action="{{ url_for('submit_rating') }}" method="post">
+      <form id="rating-form" class="rate-form" action="{{ url_for('submit_rating') }}" method="post" enctype="multipart/form-data">
         <h3>Leave a rating</h3>
         <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
         <div class="field">
@@ -342,6 +351,10 @@
         <div class="field">
           <label for="rate-comment">Your review (optional)</label>
           <textarea id="rate-comment" name="comment" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label for="rate-photos">Attach decor photos (optional, JPG/PNG/WEBP)</label>
+          <input type="file" id="rate-photos" name="photos" accept="image/*" multiple>
         </div>
         <button type="submit" class="btn btn-primary btn-block">Submit Rating</button>
         <p id="rating-msg" class="form-msg" role="status"></p>
@@ -377,7 +390,7 @@
           </div>
         </div>
 
-        <form id="enquiry-form" class="enquiry-form" action="{{ url_for('submit_enquiry') }}" method="post">
+        <form id="enquiry-form" class="enquiry-form" action="{{ url_for('submit_enquiry') }}" method="post" enctype="multipart/form-data">
           <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
           <div class="form-row">
             <div class="field">
@@ -421,6 +434,10 @@
           <div class="field">
             <label for="e-message">Tell us about your event</label>
             <textarea id="e-message" name="message" rows="4"></textarea>
+          </div>
+          <div class="field">
+            <label for="e-photos">Attach reference decor photos (optional, JPG/PNG/WEBP)</label>
+            <input type="file" id="e-photos" name="photos" accept="image/*" multiple>
           </div>
           <button type="submit" class="btn btn-primary btn-block">Send Enquiry</button>
           <p id="enquiry-msg" class="form-msg" role="status"></p>

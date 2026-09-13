@@ -105,6 +105,21 @@ def inject_now():
     return {"now": int(datetime.utcnow().timestamp())}
 
 
+@app.template_filter("from_json_or_split")
+def from_json_or_split(val):
+    if not val:
+        return []
+    if isinstance(val, list):
+        return val
+    try:
+        data = json.loads(val)
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return [p.strip() for p in str(val).split(",") if p.strip()]
+
+
 @app.after_request
 def add_cache_control_headers(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, post-check=0, pre-check=0"
@@ -369,8 +384,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
             for d in m_docs:
                 db.execute(
                     """
-                    INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO enquiries (id, name, phone, email, event_type, event_date, location, message, created_at, is_read, photos)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         d.get("id"),
@@ -382,7 +397,8 @@ def sync_enquiries_from_cloud(db, deleted_set=None):
                         d.get("location") or "",
                         d.get("message") or "",
                         d.get("created_at") or "2026-01-01 00:00:00",
-                        1 if d.get("is_read") else 0
+                        1 if d.get("is_read") else 0,
+                        d.get("photos") or None
                     )
                 )
             db.commit()
@@ -470,8 +486,8 @@ def sync_ratings_from_cloud(db, deleted_set=None):
                     stars = 5
                 db.execute(
                     """
-                    INSERT INTO ratings (id, name, stars, comment, created_at, approved)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO ratings (id, name, stars, comment, created_at, approved, photos)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         d.get("id"),
@@ -479,7 +495,8 @@ def sync_ratings_from_cloud(db, deleted_set=None):
                         stars,
                         d.get("comment") or "",
                         d.get("created_at") or "2026-01-01 00:00:00",
-                        1 if d.get("approved") else 0
+                        1 if d.get("approved") else 0,
+                        d.get("photos") or None
                     )
                 )
             db.commit()
@@ -1020,7 +1037,8 @@ def init_db():
             location TEXT,
             message TEXT,
             created_at TEXT NOT NULL,
-            is_read INTEGER NOT NULL DEFAULT 0
+            is_read INTEGER NOT NULL DEFAULT 0,
+            photos TEXT
         );
 
         CREATE TABLE IF NOT EXISTS photos (
@@ -1048,7 +1066,8 @@ def init_db():
             stars INTEGER NOT NULL,
             comment TEXT,
             created_at TEXT NOT NULL,
-            approved INTEGER NOT NULL DEFAULT 0
+            approved INTEGER NOT NULL DEFAULT 0,
+            photos TEXT
         );
 
         CREATE TABLE IF NOT EXISTS deleted_items (
@@ -1061,10 +1080,15 @@ def init_db():
     )
     db.commit()
 
-    # Column migration for cloud storage URLs
+    # Column migration for cloud storage URLs and attached photos
     for table in ["photos", "videos"]:
         try:
             db.execute(f"ALTER TABLE {table} ADD COLUMN cloud_url TEXT")
+        except sqlite3.OperationalError:
+            pass
+    for table in ["enquiries", "ratings"]:
+        try:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN photos TEXT")
         except sqlite3.OperationalError:
             pass
     db.commit()
@@ -1236,13 +1260,32 @@ def submit_enquiry():
 
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Handle optional attached photos (e.g. stage/decor reference images)
+        attached_photos = []
+        files = request.files.getlist("photos") or request.files.getlist("photo") or []
+        for idx, f in enumerate(files):
+            if f and f.filename and allowed_file(f.filename, ALLOWED_IMAGE_EXT):
+                safe_name = secure_filename(f.filename)
+                uname = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_{safe_name}"
+                lpath = os.path.join(PHOTO_DIR, uname)
+                f.save(lpath)
+                c_url = upload_file_to_firebase(lpath, "enquiries", uname)
+                if IS_VERCEL and os.path.exists(lpath):
+                    try:
+                        os.remove(lpath)
+                    except Exception:
+                        pass
+                attached_photos.append(c_url or url_for('static', filename=f'uploads/photos/{uname}'))
+        photos_json = json.dumps(attached_photos) if attached_photos else None
+
         db = get_db()
         cursor = db.execute(
             """
-            INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO enquiries (name, phone, email, event_type, event_date, location, message, created_at, photos)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name, phone, email, event_type, event_date, location, message, now),
+            (name, phone, email, event_type, event_date, location, message, now, photos_json),
         )
         db.commit()
 
@@ -1253,6 +1296,7 @@ def submit_enquiry():
             "name": name, "phone": phone, "email": email,
             "event_type": event_type, "event_date": event_date,
             "location": location, "message": message,
+            "photos": attached_photos,
         }
         threading.Thread(target=notify_owner_new_enquiry, args=(enquiry_payload,), daemon=True).start()
     except Exception as exc:
@@ -1293,10 +1337,29 @@ def submit_rating():
 
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Handle optional attached photos of event decoration
+        attached_photos = []
+        files = request.files.getlist("photos") or request.files.getlist("photo") or []
+        for idx, f in enumerate(files):
+            if f and f.filename and allowed_file(f.filename, ALLOWED_IMAGE_EXT):
+                safe_name = secure_filename(f.filename)
+                uname = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_{safe_name}"
+                lpath = os.path.join(PHOTO_DIR, uname)
+                f.save(lpath)
+                c_url = upload_file_to_firebase(lpath, "ratings", uname)
+                if IS_VERCEL and os.path.exists(lpath):
+                    try:
+                        os.remove(lpath)
+                    except Exception:
+                        pass
+                attached_photos.append(c_url or url_for('static', filename=f'uploads/photos/{uname}'))
+        photos_json = json.dumps(attached_photos) if attached_photos else None
+
         db = get_db()
         cursor = db.execute(
-            "INSERT INTO ratings (name, stars, comment, created_at, approved) VALUES (?, ?, ?, ?, 0)",
-            (name, stars_int, comment, now),
+            "INSERT INTO ratings (name, stars, comment, created_at, approved, photos) VALUES (?, ?, ?, ?, 0, ?)",
+            (name, stars_int, comment, now, photos_json),
         )
         db.commit()
 
@@ -2029,8 +2092,8 @@ def api_cloudinary_sign():
         return jsonify({"error": "Cloudinary storage is not configured on server"}), 400
 
     folder = request.args.get("folder") or request.form.get("folder") or "videos"
-    if folder not in ["photos", "videos"]:
-        folder = "videos"
+    if folder not in ["photos", "videos", "enquiries", "ratings"]:
+        folder = "photos"
 
     timestamp = int(datetime.now().timestamp())
     target_folder = f"fa-events/{folder}"
@@ -2055,58 +2118,85 @@ def api_cloudinary_sign():
 @app.route("/admin/photo/upload", methods=["POST"])
 @login_required
 def upload_photo():
-    file = request.files.get("photo")
     caption = request.form.get("caption", "").strip()
     category = request.form.get("category", "").strip()
-    cloud_url = request.form.get("cloud_url", "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    unique_name = None
+    raw_cloud_urls = request.form.get("cloud_urls") or ""
+    cloud_url = request.form.get("cloud_url", "").strip()
 
-    if cloud_url:
-        parsed = cloud_url.rsplit("/", 1)[-1].split("?")[0]
-        unique_name = parsed if parsed and "." in parsed else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_photo.jpg"
-    elif file and file.filename != "":
-        if not allowed_file(file.filename, ALLOWED_IMAGE_EXT):
-            flash("Unsupported image format. Use JPG, PNG, WEBP or GIF.")
-            return redirect(url_for("admin_dashboard") + "#gallery")
+    urls = []
+    if raw_cloud_urls:
+        try:
+            parsed = json.loads(raw_cloud_urls)
+            if isinstance(parsed, list):
+                urls.extend([u.strip() for u in parsed if u and str(u).strip()])
+            elif isinstance(parsed, str):
+                urls.append(parsed.strip())
+        except Exception:
+            urls.extend([u.strip() for u in raw_cloud_urls.split(",") if u.strip()])
+    elif cloud_url:
+        urls.append(cloud_url)
 
-        filename = secure_filename(file.filename)
-        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
-        local_path = os.path.join(PHOTO_DIR, unique_name)
-        file.save(local_path)
-        cloud_url = upload_file_to_firebase(local_path, "photos", unique_name)
+    uploaded_records = []
 
-        if IS_VERCEL and os.path.exists(local_path):
-            try:
-                os.remove(local_path)
-            except Exception:
-                pass
+    if urls:
+        for idx, u in enumerate(urls):
+            parsed_name = u.rsplit("/", 1)[-1].split("?")[0]
+            uname = parsed_name if parsed_name and "." in parsed_name else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_photo.jpg"
+            uploaded_records.append((uname, u, caption, category, now))
     else:
-        flash("Please choose a photo to upload.")
+        files = request.files.getlist("photos") or request.files.getlist("photo") or []
+        if not files and request.files.get("photo"):
+            files = [request.files.get("photo")]
+        valid_files = [f for f in files if f and f.filename and f.filename.strip() != ""]
+
+        for idx, file in enumerate(valid_files):
+            if not allowed_file(file.filename, ALLOWED_IMAGE_EXT):
+                continue
+            filename = secure_filename(file.filename)
+            unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_{filename}"
+            local_path = os.path.join(PHOTO_DIR, unique_name)
+            file.save(local_path)
+            c_url = upload_file_to_firebase(local_path, "photos", unique_name)
+            if IS_VERCEL and os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except Exception:
+                    pass
+            uploaded_records.append((unique_name, c_url, caption, category, now))
+
+    if not uploaded_records:
+        flash("Please choose at least one photo to upload (JPG, PNG, WEBP, GIF).")
         return redirect(url_for("admin_dashboard") + "#gallery")
 
     db = get_db()
-    db.execute(
-        "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
-        (unique_name, cloud_url, caption, category, now),
-    )
+    for item in uploaded_records:
+        db.execute(
+            "INSERT INTO photos (filename, cloud_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?)",
+            item,
+        )
     db.commit()
     push_photos_to_cloud(db)
 
     if FIREBASE_DB:
-        try:
-            FIREBASE_DB.collection("photos").document(unique_name).set({
-                "filename": unique_name,
-                "cloud_url": cloud_url,
-                "caption": caption,
-                "category": category,
-                "created_at": now,
-            })
-        except Exception as exc:
-            app.logger.warning("Firestore photo save failed: %s", exc)
+        for item in uploaded_records:
+            try:
+                FIREBASE_DB.collection("photos").document(item[0]).set({
+                    "filename": item[0],
+                    "cloud_url": item[1],
+                    "caption": item[2],
+                    "category": item[3],
+                    "created_at": item[4],
+                })
+            except Exception as exc:
+                app.logger.warning("Firestore photo save failed: %s", exc)
 
-    flash("Photo uploaded successfully to Cloud Storage!")
+    count = len(uploaded_records)
+    if count == 1:
+        flash("Photo uploaded successfully to Cloud Storage!")
+    else:
+        flash(f"{count} photos uploaded successfully to Cloud Storage!")
     return redirect(url_for("admin_dashboard") + "#gallery")
 
 
@@ -2177,61 +2267,91 @@ def delete_photo(photo_id):
 @app.route("/admin/video/upload", methods=["POST"])
 @login_required
 def upload_video():
-    file = request.files.get("video")
-    embed_url = request.form.get("embed_url", "").strip()
     caption = request.form.get("caption", "").strip()
     category = request.form.get("category", "").strip()
-    cloud_url = request.form.get("cloud_url", "").strip()
+    embed_url = request.form.get("embed_url", "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    filename = None
+    raw_cloud_urls = request.form.get("cloud_urls") or ""
+    cloud_url = request.form.get("cloud_url", "").strip()
 
-    if cloud_url:
-        parsed = cloud_url.rsplit("/", 1)[-1].split("?")[0]
-        filename = parsed if parsed and "." in parsed else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_video.mp4"
-    elif file and file.filename:
-        if not allowed_file(file.filename, ALLOWED_VIDEO_EXT):
-            flash("Unsupported video format. Use MP4, WEBM or MOV.")
-            return redirect(url_for("admin_dashboard") + "#videos")
-        safe = secure_filename(file.filename)
-        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe}"
-        local_path = os.path.join(VIDEO_DIR, filename)
-        file.save(local_path)
-        cloud_url = upload_file_to_firebase(local_path, "videos", filename)
+    urls = []
+    if raw_cloud_urls:
+        try:
+            parsed = json.loads(raw_cloud_urls)
+            if isinstance(parsed, list):
+                urls.extend([u.strip() for u in parsed if u and str(u).strip()])
+            elif isinstance(parsed, str):
+                urls.append(parsed.strip())
+        except Exception:
+            urls.extend([u.strip() for u in raw_cloud_urls.split(",") if u.strip()])
+    elif cloud_url:
+        urls.append(cloud_url)
 
-        if IS_VERCEL and os.path.exists(local_path):
-            try:
-                os.remove(local_path)
-            except Exception:
-                pass
+    uploaded_records = []
 
-    if not filename and not embed_url and not cloud_url:
-        flash("Upload a video file or paste a YouTube/Instagram embed link.")
+    if urls:
+        for idx, u in enumerate(urls):
+            parsed_name = u.rsplit("/", 1)[-1].split("?")[0]
+            vname = parsed_name if parsed_name and "." in parsed_name else f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_video.mp4"
+            uploaded_records.append((vname, u, "", caption, category, now))
+    else:
+        files = request.files.getlist("videos") or request.files.getlist("video") or []
+        if not files and request.files.get("video"):
+            files = [request.files.get("video")]
+        valid_files = [f for f in files if f and f.filename and f.filename.strip() != ""]
+
+        for idx, file in enumerate(valid_files):
+            if not allowed_file(file.filename, ALLOWED_VIDEO_EXT):
+                continue
+            safe = secure_filename(file.filename)
+            filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{idx}_{safe}"
+            local_path = os.path.join(VIDEO_DIR, filename)
+            file.save(local_path)
+            c_url = upload_file_to_firebase(local_path, "videos", filename)
+            if IS_VERCEL and os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except Exception:
+                    pass
+            uploaded_records.append((filename, c_url, "", caption, category, now))
+
+    if not uploaded_records and embed_url:
+        uploaded_records.append(("", "", embed_url, caption, category, now))
+
+    if not uploaded_records:
+        flash("Upload a video file or paste a YouTube / Instagram embed link.")
         return redirect(url_for("admin_dashboard") + "#videos")
 
     db = get_db()
-    db.execute(
-        "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (filename or "", cloud_url, embed_url, caption, category, now),
-    )
+    for item in uploaded_records:
+        db.execute(
+            "INSERT INTO videos (filename, cloud_url, embed_url, caption, category, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            item,
+        )
     db.commit()
     push_videos_to_cloud(db)
 
     if FIREBASE_DB:
-        try:
-            doc_id = filename or f"embed_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            FIREBASE_DB.collection("videos").document(doc_id).set({
-                "filename": filename or "",
-                "cloud_url": cloud_url,
-                "embed_url": embed_url,
-                "caption": caption,
-                "category": category,
-                "created_at": now,
-            })
-        except Exception as exc:
-            app.logger.warning("Firestore video save failed: %s", exc)
+        for item in uploaded_records:
+            try:
+                doc_id = item[0] or f"embed_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                FIREBASE_DB.collection("videos").document(doc_id).set({
+                    "filename": item[0] or "",
+                    "cloud_url": item[1] or "",
+                    "embed_url": item[2] or "",
+                    "caption": item[3],
+                    "category": item[4],
+                    "created_at": item[5],
+                })
+            except Exception as exc:
+                app.logger.warning("Firestore video save failed: %s", exc)
 
-    flash("Video added successfully to Cloud Storage!")
+    count = len(uploaded_records)
+    if count == 1:
+        flash("Video added successfully to Cloud Storage!")
+    else:
+        flash(f"{count} videos added successfully to Cloud Storage!")
     return redirect(url_for("admin_dashboard") + "#videos")
 
 
