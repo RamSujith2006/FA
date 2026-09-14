@@ -16,11 +16,15 @@
 
 <!-- Open Graph & Social Sharing -->
 <meta property="og:type" content="business.business">
-<meta property="og:site_name" content="FA Events">
+<meta property="og:site_name" content="F.A Event">
 <meta property="og:title" content="F.A Events Parvathipuram, Nagercoil — Wedding & Event Decoration">
 <meta property="og:description" content="Premium stage, wedding, engagement, reception & birthday decoration across Parvathipuram, Christopher Colony, Nagercoil & Kanyakumari District.">
 <meta property="og:url" content="{{ request.url_root }}">
 <meta property="og:image" content="{{ request.url_root.rstrip('/') }}/static/logo.png">
+
+<!-- Web Application Name for Google Search & Browsers -->
+<meta name="application-name" content="F.A Event">
+<meta name="apple-mobile-web-app-title" content="F.A Event">
 
 <!-- Favicon Suite for Google Search, Desktop & Mobile Browsers -->
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -41,14 +45,28 @@
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "name": "FA Events",
+  "@id": "{{ request.url_root }}#website",
+  "name": "F.A Event",
   "alternateName": [
     "F.A Events",
+    "FA Events",
+    "FA Event",
+    "F.A Event Parvathipuram",
     "FA Events Parvathipuram",
     "FA Events Parvatipuram",
     "FA Events Nagercoil"
   ],
-  "url": "{{ request.url_root }}"
+  "url": "{{ request.url_root }}",
+  "publisher": {
+    "@type": "Organization",
+    "@id": "{{ request.url_root }}#organization",
+    "name": "F.A Event",
+    "url": "{{ request.url_root }}",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "{{ request.url_root.rstrip('/') }}/static/logo.png"
+    }
+  }
 }
 </script>
 
@@ -57,11 +75,14 @@
 {
   "@context": "https://schema.org",
   "@type": ["EventPlanner", "LocalBusiness", "Organization"],
-  "name": "FA Events",
+  "name": "F.A Event",
   "alternateName": [
     "F.A Events",
+    "FA Events",
+    "FA Event",
     "F.A events",
-    "F.A Events Parvathipuram",
+    "F.A Event Parvathipuram",
+    "FA Events Parvathipuram",
     "FA Events Parvatipuram",
     "FA Events Nagercoil",
     "FA Events Christopher Colony",
@@ -146,9 +167,9 @@
 <header class="site-header">
   <div class="wrap">
     <a href="#top" class="brand">
-      <img src="{{ url_for('static', filename='logo.png') }}" alt="FA Events Logo" class="brand-logo">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="F.A Event Logo" class="brand-logo">
       <div class="brand-text">
-        <span class="brand-mark"><span class="gold-italic">FA Events</span></span>
+        <span class="brand-mark"><span class="gold-italic">F.A Event</span></span>
         <span class="brand-sub">Nagercoil &middot; Kanyakumari</span>
       </div>
     </a>

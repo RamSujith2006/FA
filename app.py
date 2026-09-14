@@ -144,7 +144,7 @@ def add_cache_control_headers(response):
 # Business info — edit these to update the site's contact details & SEO
 # ---------------------------------------------------------------------------
 BUSINESS = {
-    "name": "FA Events",
+    "name": "F.A Event",
     "tagline": "Event & Wedding Decoration across Kanyakumari District",
     "phone_display": "+91 78453 28583",
     "phone_tel": "+917845328583",
