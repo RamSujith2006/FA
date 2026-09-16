@@ -37,6 +37,184 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  /* ---------- Fullscreen Photo Gallery Lightbox Viewer ---------- */
+  function initPhotoLightbox() {
+    const lightbox = document.getElementById("photo-lightbox");
+    if (!lightbox) return;
+
+    const overlay = document.getElementById("lightbox-overlay");
+    const closeBtn = document.getElementById("lightbox-close");
+    const prevBtn = document.getElementById("lightbox-prev");
+    const nextBtn = document.getElementById("lightbox-next");
+    const mainImg = document.getElementById("lightbox-main-img");
+    const titleEl = document.getElementById("lightbox-title");
+    const counterEl = document.getElementById("lightbox-counter");
+
+    let currentIndex = 0;
+    let activeList = [];
+
+    function getVisiblePhotos() {
+      const figures = [...document.querySelectorAll(".gallery-item")].filter((fig) => {
+        return fig.style.display !== "none" && window.getComputedStyle(fig).display !== "none";
+      });
+      return figures.map((fig) => {
+        const img = fig.querySelector("img");
+        const cap = fig.querySelector(".cap")?.textContent?.trim() || img?.getAttribute("alt") || "FA Events Decoration";
+        return {
+          src: img ? (img.currentSrc || img.src) : "",
+          caption: cap,
+          element: fig
+        };
+      }).filter((item) => !!item.src);
+    }
+
+    function openAt(index) {
+      activeList = getVisiblePhotos();
+      if (!activeList.length) return;
+      if (index < 0) index = 0;
+      if (index >= activeList.length) index = activeList.length - 1;
+      currentIndex = index;
+
+      showSlide(0);
+      lightbox.style.display = "flex";
+      void lightbox.offsetWidth;
+      lightbox.classList.add("is-open");
+      document.body.classList.add("lightbox-open");
+      window.addEventListener("keydown", onKeydown);
+    }
+
+    function close() {
+      lightbox.classList.remove("is-open");
+      document.body.classList.remove("lightbox-open");
+      window.removeEventListener("keydown", onKeydown);
+      setTimeout(() => {
+        if (!lightbox.classList.contains("is-open")) {
+          lightbox.style.display = "none";
+          mainImg.src = "";
+        }
+      }, 260);
+    }
+
+    function showSlide(dir = 0) {
+      if (!activeList[currentIndex]) return;
+      const cur = activeList[currentIndex];
+
+      mainImg.style.opacity = "0";
+      mainImg.style.transform = dir > 0 ? "scale(0.95) translateX(24px)" : dir < 0 ? "scale(0.95) translateX(-24px)" : "scale(0.95)";
+
+      const preload = new Image();
+      preload.src = cur.src;
+      const applyImage = () => {
+        mainImg.src = cur.src;
+        mainImg.alt = cur.caption;
+        if (titleEl) titleEl.textContent = cur.caption;
+        if (counterEl) counterEl.textContent = `${currentIndex + 1} / ${activeList.length}`;
+        requestAnimationFrame(() => {
+          mainImg.style.opacity = "1";
+          mainImg.style.transform = "scale(1) translateX(0)";
+        });
+      };
+      preload.onload = applyImage;
+      preload.onerror = applyImage;
+
+      if (activeList.length <= 1) {
+        if (prevBtn) prevBtn.style.display = "none";
+        if (nextBtn) nextBtn.style.display = "none";
+      } else {
+        if (prevBtn) prevBtn.style.display = "flex";
+        if (nextBtn) nextBtn.style.display = "flex";
+      }
+    }
+
+    function next() {
+      if (activeList.length <= 1) return;
+      currentIndex = (currentIndex + 1) % activeList.length;
+      showSlide(1);
+    }
+
+    function prev() {
+      if (activeList.length <= 1) return;
+      currentIndex = (currentIndex - 1 + activeList.length) % activeList.length;
+      showSlide(-1);
+    }
+
+    function onKeydown(e) {
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowRight" || e.key === "ArrowDown") next();
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") prev();
+    }
+
+    // Bind gallery items
+    document.querySelectorAll(".gallery-item").forEach((fig) => {
+      fig.style.cursor = "pointer";
+      const clickHandler = (e) => {
+        e.preventDefault();
+        const currentItems = getVisiblePhotos();
+        const clickedImg = fig.querySelector("img");
+        const clickedSrc = clickedImg ? (clickedImg.currentSrc || clickedImg.src) : "";
+        const foundIdx = currentItems.findIndex((item) => item.src === clickedSrc);
+        openAt(foundIdx !== -1 ? foundIdx : 0);
+      };
+      fig.addEventListener("click", clickHandler);
+      fig.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          clickHandler(e);
+        }
+      });
+    });
+
+    // Also bind review photos if present
+    document.querySelectorAll(".review-photo-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        const img = item.querySelector("img") || item;
+        const src = item.getAttribute("href") || img.getAttribute("src");
+        if (src) {
+          activeList = [{ src, caption: "Customer Review Decor Photo" }];
+          currentIndex = 0;
+          showSlide(0);
+          lightbox.style.display = "flex";
+          void lightbox.offsetWidth;
+          lightbox.classList.add("is-open");
+          document.body.classList.add("lightbox-open");
+          window.addEventListener("keydown", onKeydown);
+        }
+      });
+    });
+
+    if (closeBtn) closeBtn.addEventListener("click", close);
+    if (overlay) overlay.addEventListener("click", close);
+    if (nextBtn) nextBtn.addEventListener("click", (e) => { e.stopPropagation(); next(); });
+    if (prevBtn) prevBtn.addEventListener("click", (e) => { e.stopPropagation(); prev(); });
+
+    // Touch Swipe Detection for mobile screens
+    let startX = 0;
+    let startY = 0;
+    lightbox.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    lightbox.addEventListener("touchend", (e) => {
+      if (e.changedTouches.length === 1) {
+        const diffX = e.changedTouches[0].clientX - startX;
+        const diffY = e.changedTouches[0].clientY - startY;
+        const absX = Math.abs(diffX);
+        const absY = Math.abs(diffY);
+        if (absX > 40 && absX > absY * 1.5) {
+          if (diffX < 0) next();
+          else prev();
+        } else if (diffY > 80 && absY > absX * 1.5) {
+          close();
+        }
+      }
+    }, { passive: true });
+  }
+
+  initPhotoLightbox();
+
   /* ---------- star rating input ---------- */
   const starWrap = document.querySelector(".star-input");
   if (starWrap) {
